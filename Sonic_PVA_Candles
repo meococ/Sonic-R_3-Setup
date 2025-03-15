@@ -1,0 +1,217 @@
+//+------------------------------------------------------------------+
+//|                                       Sonic_PVA_Candles.mqh      |
+//+------------------------------------------------------------------+
+
+class CSonicPVACandles
+{
+private:
+    // Buffers
+    double UPWicksBuffer[];
+    double DNWicksBuffer[];
+    double BullCandleBuffer[];
+    double BearCandleBuffer[];
+    double BullRisingBuffer[];
+    double BearRisingBuffer[];
+    double BullClimaxBuffer[];
+    double BearClimaxBuffer[];
+    
+    int volumePeriod;
+    double climaxThreshold;
+    double risingThreshold;
+    
+    // Thêm biến Chart Scale
+    int chartScale;
+    int barWidth;
+    bool initialized;
+
+public:
+    // Constructor
+    CSonicPVACandles()
+    {
+        chartScale = -1;
+        barWidth = 2;
+        initialized = false;
+    }
+    
+    // Phương thức cập nhật Chart Scale
+    void UpdateChartScale(int scale)
+    {
+        if(chartScale != scale)
+        {
+            chartScale = scale;
+            
+            // Thiết lập bar width dựa trên Chart Scale
+            switch(chartScale)
+            {
+                case 0: barWidth = 1; break;
+                case 1: 
+                case 2: barWidth = 2; break;
+                case 3: barWidth = 3; break;
+                case 4: barWidth = 6; break;
+                default: barWidth = 13; break;
+            }
+            
+            // Cập nhật lại các chỉ số vẽ nếu đã được khởi tạo
+            if(initialized)
+                ApplyChartScale();
+        }
+    }
+    
+    // Cập nhật lại kích thước biểu đồ
+    void ApplyChartScale()
+    {
+        // Không làm gì nếu chưa khởi tạo
+        if(!initialized) return;
+    }
+
+    int Init(int buffer_start, int volPeriod, double climaxThr, double risingThr,
+            color normalBullColor, color normalBearColor, 
+            color risingBullColor, color risingBearColor,
+            color climaxBullColor, color climaxBearColor)
+    {
+        volumePeriod = volPeriod;
+        climaxThreshold = climaxThr;
+        risingThreshold = risingThr;
+        
+        // Khởi tạo Chart Scale nếu chưa có
+        if(chartScale == -1)
+        {
+            long chartScaleValue;
+            if(ChartGetInteger(0, CHART_SCALE, 0, chartScaleValue))
+                chartScale = (int)chartScaleValue;
+            else
+                chartScale = 3; // Giá trị mặc định
+                
+            // Cập nhật Bar Width dựa trên Chart Scale
+            UpdateChartScale(chartScale);
+        }
+        
+        int idx = buffer_start;
+        
+        // Set buffers
+        SetIndexBuffer(idx++, UPWicksBuffer, INDICATOR_DATA);
+        SetIndexBuffer(idx++, DNWicksBuffer, INDICATOR_DATA);
+        SetIndexBuffer(idx++, BullCandleBuffer, INDICATOR_DATA);
+        SetIndexBuffer(idx++, BearCandleBuffer, INDICATOR_DATA);
+        SetIndexBuffer(idx++, BullRisingBuffer, INDICATOR_DATA);
+        SetIndexBuffer(idx++, BearRisingBuffer, INDICATOR_DATA);
+        SetIndexBuffer(idx++, BullClimaxBuffer, INDICATOR_DATA);
+        SetIndexBuffer(idx++, BearClimaxBuffer, INDICATOR_DATA);
+        
+        // Set plot properties
+        PlotIndexSetInteger(buffer_start, PLOT_DRAW_TYPE, DRAW_LINE);
+        PlotIndexSetInteger(buffer_start, PLOT_LINE_COLOR, clrGray);
+        PlotIndexSetString(buffer_start, PLOT_LABEL, "UP Wicks");
+        
+        PlotIndexSetInteger(buffer_start+1, PLOT_DRAW_TYPE, DRAW_LINE);
+        PlotIndexSetInteger(buffer_start+1, PLOT_LINE_COLOR, clrGray);
+        PlotIndexSetString(buffer_start+1, PLOT_LABEL, "DN Wicks");
+        
+        PlotIndexSetInteger(buffer_start+2, PLOT_DRAW_TYPE, DRAW_COLOR_CANDLES);
+        PlotIndexSetInteger(buffer_start+2, PLOT_LINE_COLOR, normalBullColor);
+        PlotIndexSetString(buffer_start+2, PLOT_LABEL, "Bull Candle");
+        
+        PlotIndexSetInteger(buffer_start+3, PLOT_DRAW_TYPE, DRAW_COLOR_CANDLES);
+        PlotIndexSetInteger(buffer_start+3, PLOT_LINE_COLOR, normalBearColor);
+        PlotIndexSetString(buffer_start+3, PLOT_LABEL, "Bear Candle");
+        
+        PlotIndexSetInteger(buffer_start+4, PLOT_DRAW_TYPE, DRAW_COLOR_CANDLES);
+        PlotIndexSetInteger(buffer_start+4, PLOT_LINE_COLOR, risingBullColor);
+        PlotIndexSetString(buffer_start+4, PLOT_LABEL, "Bull Rising");
+        
+        PlotIndexSetInteger(buffer_start+5, PLOT_DRAW_TYPE, DRAW_COLOR_CANDLES);
+        PlotIndexSetInteger(buffer_start+5, PLOT_LINE_COLOR, risingBearColor);
+        PlotIndexSetString(buffer_start+5, PLOT_LABEL, "Bear Rising");
+        
+        PlotIndexSetInteger(buffer_start+6, PLOT_DRAW_TYPE, DRAW_COLOR_CANDLES);
+        PlotIndexSetInteger(buffer_start+6, PLOT_LINE_COLOR, climaxBullColor);
+        PlotIndexSetString(buffer_start+6, PLOT_LABEL, "Bull Climax");
+        
+        PlotIndexSetInteger(buffer_start+7, PLOT_DRAW_TYPE, DRAW_COLOR_CANDLES);
+        PlotIndexSetInteger(buffer_start+7, PLOT_LINE_COLOR, climaxBearColor);
+        PlotIndexSetString(buffer_start+7, PLOT_LABEL, "Bear Climax");
+        
+        initialized = true;
+        
+        return idx;
+    }
+    
+    void Calculate(const int rates_total, const int prev_calculated, const int limit,
+                 const datetime& time[], const double& open[], const double& high[], 
+                 const double& low[], const double& close[], const long& tick_volume[])
+    {
+        // Tính toán và phân loại nến
+        for(int i = limit; i >= 0; i--)
+        {
+            // Tính trung bình khối lượng trong khoảng thời gian
+            double avgVolume = 0;
+            double highestProduct = 0;
+            
+            int count = 0;
+            for(int j = i + 1; j <= i + volumePeriod && j < rates_total; j++)
+            {
+                avgVolume += tick_volume[j];
+                double product = (high[j] - low[j]) * tick_volume[j];
+                if(product > highestProduct) highestProduct = product;
+                count++;
+            }
+            
+            if(count > 0) avgVolume /= count;
+            
+            // Xác định loại nến dựa trên khối lượng
+            double volumeRatio = tick_volume[i] / (avgVolume > 0 ? avgVolume : 1);
+            double currentProduct = (high[i] - low[i]) * tick_volume[i];
+            
+            // Đặt giá trị ban đầu
+            UPWicksBuffer[i] = high[i];
+            DNWicksBuffer[i] = low[i];
+            
+            // Đặt các buffer nến về 0
+            BullCandleBuffer[i] = 0;
+            BearCandleBuffer[i] = 0;
+            BullRisingBuffer[i] = 0;
+            BearRisingBuffer[i] = 0;
+            BullClimaxBuffer[i] = 0;
+            BearClimaxBuffer[i] = 0;
+            
+            // Xác định loại nến dựa trên khối lượng và giá
+            bool isClimaxVolume = (volumeRatio >= climaxThreshold || currentProduct >= highestProduct);
+            bool isRisingVolume = (volumeRatio >= risingThreshold);
+            bool isBullish = (close[i] > open[i]);
+            
+            if(isClimaxVolume)
+            {
+                if(isBullish)
+                {
+                    BullClimaxBuffer[i] = high[i];
+                }
+                else
+                {
+                    BearClimaxBuffer[i] = high[i];
+                }
+            }
+            else if(isRisingVolume)
+            {
+                if(isBullish)
+                {
+                    BullRisingBuffer[i] = high[i];
+                }
+                else
+                {
+                    BearRisingBuffer[i] = high[i];
+                }
+            }
+            else
+            {
+                if(isBullish)
+                {
+                    BullCandleBuffer[i] = high[i];
+                }
+                else
+                {
+                    BearCandleBuffer[i] = high[i];
+                }
+            }
+        }
+    }
+};
