@@ -26,17 +26,27 @@
 #define MODE_MAXLOT SYMBOL_VOLUME_MAX
 #define MODE_SPREAD SYMBOL_SPREAD
 #define MODE_POINT SYMBOL_POINT
-#define MODE_HIGH PRICE_HIGH
-#define MODE_LOW PRICE_LOW
 
 // For compatibility with iMA, iHighest, iLowest functions
-#define PRICE_CLOSE 1
-#define PRICE_OPEN 0
-#define PRICE_HIGH 2
-#define PRICE_LOW 3
-#define PRICE_MEDIAN 4
-#define PRICE_TYPICAL 5
-#define PRICE_WEIGHTED 6
+enum ENUM_MQL4_APPLIED_PRICE
+{
+   MQL4_PRICE_CLOSE = 1,   // Giá đóng cửa
+   MQL4_PRICE_OPEN = 0,    // Giá mở cửa
+   MQL4_PRICE_HIGH = 2,    // Giá cao nhất
+   MQL4_PRICE_LOW = 3,     // Giá thấp nhất
+   MQL4_PRICE_MEDIAN = 4,  // Giá trung bình (high+low)/2
+   MQL4_PRICE_TYPICAL = 5, // Giá điển hình (high+low+close)/3
+   MQL4_PRICE_WEIGHTED = 6 // Giá có trọng số (high+low+close+close)/4
+};
+
+// Định nghĩa lại các hằng số để sử dụng giá trị enum mới
+#define PRICE_CLOSE MQL4_PRICE_CLOSE
+#define PRICE_OPEN MQL4_PRICE_OPEN
+#define PRICE_HIGH MQL4_PRICE_HIGH
+#define PRICE_LOW MQL4_PRICE_LOW  
+#define PRICE_MEDIAN MQL4_PRICE_MEDIAN
+#define PRICE_TYPICAL MQL4_PRICE_TYPICAL
+#define PRICE_WEIGHTED MQL4_PRICE_WEIGHTED
 
 #define MODE_SMA 0     // Simple moving average
 #define MODE_EMA 1     // Exponential moving average
@@ -64,9 +74,9 @@ input string           Dragon_Settings = "===== DRAGON (EMA) SETTINGS =====";
 input int              DragonPeriod = 34;              // Dragon EMA Period
 input int              TrendPeriod = 89;               // Trend EMA Period
 input int              MAPeriod = 200;                 // MA Period
-input ENUM_APPLIED_PRICE DragonPrice = PRICE_CLOSE;   // Dragon Price Application
-input ENUM_APPLIED_PRICE TrendPrice = PRICE_CLOSE;    // Trend Price Application
-input ENUM_APPLIED_PRICE MAPrice = PRICE_CLOSE;       // MA Price Application
+input ENUM_MQL4_APPLIED_PRICE DragonPrice = PRICE_CLOSE;      // Dragon Price Application
+input ENUM_MQL4_APPLIED_PRICE TrendPrice = PRICE_CLOSE;       // Trend Price Application
+input ENUM_MQL4_APPLIED_PRICE MAPrice = PRICE_CLOSE;          // MA Price Application
 
 input string           PVSRA_Settings = "===== PVSRA SETTINGS =====";
 input int              VolumePeriod = 10;              // Volume averaging period
@@ -196,10 +206,10 @@ void UpdateTradingLog();
 int AnalyzePVSRA(ENUM_TIMEFRAMES timeframe);
 
 // Custom iMA function for MQL4 compatibility
-double iMA_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift, int ma_method, int applied_price, int shift_index)
+double iMA_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift, int ma_method, ENUM_MQL4_APPLIED_PRICE applied_price, int shift_index)
 {
    // Convert MQL4 method to MQL5 ENUM_MA_METHOD
-   ENUM_MA_METHOD method = MODE_SMA;  // Default
+   ENUM_MA_METHOD method;
    switch(ma_method)
    {
       case 0: method = MODE_SMA; break;   // Simple
@@ -210,17 +220,22 @@ double iMA_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift,
    }
    
    // Convert MQL4 price type to MQL5 ENUM_APPLIED_PRICE
-   ENUM_APPLIED_PRICE price = PRICE_CLOSE;  // Default
+   ENUM_APPLIED_PRICE price;
+   
+   // Chuyển đổi từ ENUM_MQL4_APPLIED_PRICE sang ENUM_APPLIED_PRICE
    switch(applied_price)
    {
-      case 0: price = PRICE_OPEN; break;
-      case 1: price = PRICE_CLOSE; break;
-      case 2: price = PRICE_HIGH; break;
-      case 3: price = PRICE_LOW; break;
-      case 4: price = PRICE_MEDIAN; break;
-      case 5: price = PRICE_TYPICAL; break;
-      case 6: price = PRICE_WEIGHTED; break;
-      default: price = PRICE_CLOSE; break;
+      case MQL4_PRICE_OPEN: price = PRICE_OPEN; break;
+      case MQL4_PRICE_CLOSE: price = PRICE_CLOSE; break;
+      case MQL4_PRICE_HIGH: price = PRICE_HIGH; break;
+      case MQL4_PRICE_LOW: price = PRICE_LOW; break;
+      case MQL4_PRICE_MEDIAN: price = PRICE_MEDIAN; break;
+      case MQL4_PRICE_TYPICAL: price = PRICE_TYPICAL; break;
+      case MQL4_PRICE_WEIGHTED: price = PRICE_WEIGHTED; break;
+      default: 
+         Print("iMA_MQL4: Unrecognized applied_price value: ", applied_price, ", using PRICE_CLOSE");
+         price = PRICE_CLOSE; 
+         break;
    }
    
    // Call MQL5 version of iMA
@@ -239,6 +254,72 @@ double iMA_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift,
    }
    
    return ma[0];
+}
+
+// Định nghĩa rõ ràng cho các hằng số ENUM_SERIESMODE
+#define MODE_OPEN ENUM_SERIESMODE::MODE_OPEN
+#define MODE_HIGH ENUM_SERIESMODE::MODE_HIGH
+#define MODE_LOW ENUM_SERIESMODE::MODE_LOW
+#define MODE_CLOSE ENUM_SERIESMODE::MODE_CLOSE
+
+// Custom function for iHighest compatibility
+int iHighest_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, ENUM_MQL4_APPLIED_PRICE price_type, int count, int start)
+{
+   // Chuyển đổi rõ ràng giữa các kiểu enum để tránh cảnh báo
+   ENUM_SERIESMODE series_mode;
+   
+   // Ánh xạ ENUM_MQL4_APPLIED_PRICE sang ENUM_SERIESMODE
+   switch(price_type)
+   {
+      case MQL4_PRICE_OPEN:
+         series_mode = MODE_OPEN;
+         break;
+      case MQL4_PRICE_CLOSE:
+         series_mode = MODE_CLOSE;
+         break;
+      case MQL4_PRICE_HIGH:
+         series_mode = MODE_HIGH;
+         break;
+      case MQL4_PRICE_LOW:
+         series_mode = MODE_LOW;
+         break;
+      default:
+         series_mode = MODE_HIGH; // Default cho iHighest
+         Print("iHighest_MQL4: Không nhận dạng được price_type, sử dụng MODE_HIGH");
+         break;
+   }
+   
+   return iHighest(symbol, timeframe, series_mode, count, start);
+}
+
+// Custom function for iLowest compatibility
+int iLowest_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, ENUM_MQL4_APPLIED_PRICE price_type, int count, int start)
+{
+   // Chuyển đổi rõ ràng giữa các kiểu enum để tránh cảnh báo
+   ENUM_SERIESMODE series_mode;
+   
+   // Ánh xạ ENUM_MQL4_APPLIED_PRICE sang ENUM_SERIESMODE
+   switch(price_type)
+   {
+      case MQL4_PRICE_OPEN:
+         series_mode = MODE_OPEN;
+         break;
+      case MQL4_PRICE_CLOSE:
+         series_mode = MODE_CLOSE;
+         break;
+      case MQL4_PRICE_HIGH:
+         series_mode = MODE_HIGH;
+         break;
+      case MQL4_PRICE_LOW:
+         series_mode = MODE_LOW;
+         break;
+      default:
+         series_mode = MODE_LOW; // Default cho iLowest
+         Print("iLowest_MQL4: Không nhận dạng được price_type, sử dụng MODE_LOW");
+         break;
+   }
+   
+   return iLowest(symbol, timeframe, series_mode, count, start);
 }
 
 //+------------------------------------------------------------------+
@@ -266,8 +347,10 @@ int OnInit()
    
    // Phần 5: Khởi tạo quản lý rủi ro tin tức và sự cố
    g_normal_spread = (double)SymbolInfoInteger(Symbol(), SYMBOL_SPREAD) * Point();
-   g_5min_high = iHigh(Symbol(), PERIOD_M5, iHighest(Symbol(), PERIOD_M5, PRICE_HIGH, 1, 0));
-   g_5min_low = iLow(Symbol(), PERIOD_M5, iLowest(Symbol(), PERIOD_M5, PRICE_LOW, 1, 0));
+   int highest_idx = iHighest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_HIGH, 1, 0);
+   int lowest_idx = iLowest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_LOW, 1, 0);
+   g_5min_high = iHigh(Symbol(), PERIOD_M5, highest_idx);
+   g_5min_low = iLow(Symbol(), PERIOD_M5, lowest_idx);
    
    if(UseExternalNewsCalendar)
       LoadNewsCalendar();
@@ -497,8 +580,8 @@ void UpdateIndicators()
    {
       // Calculate Dragon (EMA34) values
       g_dragon_mid = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, DragonPrice, 0);
-      g_dragon_high = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, PRICE_HIGH, 0);
-      g_dragon_low = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, PRICE_LOW, 0);
+      g_dragon_high = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_HIGH, 0);
+      g_dragon_low = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_LOW, 0);
       
       // Calculate Trend (EMA89) value
       g_trend = iMA_MQL4(Symbol(), PERIOD_CURRENT, TrendPeriod, 0, MODE_EMA, TrendPrice, 0);
@@ -708,10 +791,10 @@ void FindScoutSetup()
 void FindScalpingOpportunities()
 {
    // For scalping we use faster EMAs
-   double fast_ema = iMA_MQL4(Symbol(), PERIOD_M5, 21, 0, MODE_EMA, PRICE_CLOSE, 0);
-   double medium_ema = iMA_MQL4(Symbol(), PERIOD_M5, 55, 0, MODE_EMA, PRICE_CLOSE, 0);
-   double fast_ema_prev = iMA_MQL4(Symbol(), PERIOD_M5, 21, 0, MODE_EMA, PRICE_CLOSE, 1);
-   double medium_ema_prev = iMA_MQL4(Symbol(), PERIOD_M5, 55, 0, MODE_EMA, PRICE_CLOSE, 1);
+   double fast_ema = iMA_MQL4(Symbol(), PERIOD_M5, 21, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
+   double medium_ema = iMA_MQL4(Symbol(), PERIOD_M5, 55, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
+   double fast_ema_prev = iMA_MQL4(Symbol(), PERIOD_M5, 21, 0, MODE_EMA, MQL4_PRICE_CLOSE, 1);
+   double medium_ema_prev = iMA_MQL4(Symbol(), PERIOD_M5, 55, 0, MODE_EMA, MQL4_PRICE_CLOSE, 1);
    
    // Get current prices
    double current_close = iClose(Symbol(), PERIOD_CURRENT, 0);
@@ -747,11 +830,11 @@ void FindPropFirmOpportunities()
    // For prop firms we need higher probability setups with clear signals
    
    // Check multiple timeframes
-   bool h4_bullish = iMA_MQL4(Symbol(), PERIOD_H4, DragonPeriod, 0, MODE_EMA, PRICE_CLOSE, 0) > 
-                     iMA_MQL4(Symbol(), PERIOD_H4, TrendPeriod, 0, MODE_EMA, PRICE_CLOSE, 0);
+   bool h4_bullish = iMA_MQL4(Symbol(), PERIOD_H4, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
+                     iMA_MQL4(Symbol(), PERIOD_H4, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
                      
-   bool h1_bullish = iMA_MQL4(Symbol(), PERIOD_H1, DragonPeriod, 0, MODE_EMA, PRICE_CLOSE, 0) > 
-                     iMA_MQL4(Symbol(), PERIOD_H1, TrendPeriod, 0, MODE_EMA, PRICE_CLOSE, 0);
+   bool h1_bullish = iMA_MQL4(Symbol(), PERIOD_H1, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
+                     iMA_MQL4(Symbol(), PERIOD_H1, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
    
    bool m15_bullish = g_dragon_mid > g_trend;
    
@@ -909,8 +992,8 @@ void OpenScalpTrade(int type)
 //+------------------------------------------------------------------+
 void CalculateDailyRange()
 {
-   int highest_idx = iHighest(Symbol(), PERIOD_D1, PRICE_HIGH, 1, 0);
-   int lowest_idx = iLowest(Symbol(), PERIOD_D1, PRICE_LOW, 1, 0);
+   int highest_idx = iHighest_MQL4(Symbol(), PERIOD_D1, MQL4_PRICE_HIGH, 1, 0);
+   int lowest_idx = iLowest_MQL4(Symbol(), PERIOD_D1, MQL4_PRICE_LOW, 1, 0);
    
    if(highest_idx >= 0)
       g_daily_high = iHigh(Symbol(), PERIOD_D1, highest_idx);
@@ -1057,8 +1140,10 @@ bool DetectMarketAnomaly()
    }
    
    // Kiểm tra biến động giá bất thường trong 5 phút
-   double high_5min = iHigh(Symbol(), PERIOD_M5, iHighest(Symbol(), PERIOD_M5, PRICE_HIGH, 1, 0));
-   double low_5min = iLow(Symbol(), PERIOD_M5, iLowest(Symbol(), PERIOD_M5, PRICE_LOW, 1, 0));
+   int highest_idx = iHighest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_HIGH, 1, 0);
+   int lowest_idx = iLowest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_LOW, 1, 0);
+   double high_5min = iHigh(Symbol(), PERIOD_M5, highest_idx);
+   double low_5min = iLow(Symbol(), PERIOD_M5, lowest_idx);
    double range_5min = (high_5min - low_5min) / g_point;
    
    if(range_5min > AbnormalVolatilityPips)
@@ -1292,7 +1377,7 @@ void CheckPartialClose(int ticket, int type, double open_price, double profit_pi
                {
                   // Sử dụng trailing stop theo EMA89 hoặc trailing thông thường
                   if(UseEMA89TrailingStop)
-                     g_ema89 = iMA_MQL4(Symbol(), PERIOD_CURRENT, 89, 0, MODE_EMA, PRICE_CLOSE, 0);
+                     g_ema89 = iMA_MQL4(Symbol(), PERIOD_CURRENT, 89, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
                }
             }
          }
@@ -1488,16 +1573,16 @@ void PerformMultiTimeframeAnalysis()
    g_last_mtf_analysis = TimeCurrent();
    
    // Phân tích D1
-   g_mtf_bullish_d1 = iMA_MQL4(Symbol(), PERIOD_D1, DragonPeriod, 0, MODE_EMA, PRICE_CLOSE, 0) > 
-                      iMA_MQL4(Symbol(), PERIOD_D1, TrendPeriod, 0, MODE_EMA, PRICE_CLOSE, 0);
+   g_mtf_bullish_d1 = iMA_MQL4(Symbol(), PERIOD_D1, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
+                      iMA_MQL4(Symbol(), PERIOD_D1, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
                      
    // Phân tích H4
-   g_mtf_bullish_h4 = iMA_MQL4(Symbol(), PERIOD_H4, DragonPeriod, 0, MODE_EMA, PRICE_CLOSE, 0) > 
-                      iMA_MQL4(Symbol(), PERIOD_H4, TrendPeriod, 0, MODE_EMA, PRICE_CLOSE, 0);
+   g_mtf_bullish_h4 = iMA_MQL4(Symbol(), PERIOD_H4, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
+                      iMA_MQL4(Symbol(), PERIOD_H4, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
                      
    // Phân tích H1
-   g_mtf_bullish_h1 = iMA_MQL4(Symbol(), PERIOD_H1, DragonPeriod, 0, MODE_EMA, PRICE_CLOSE, 0) > 
-                      iMA_MQL4(Symbol(), PERIOD_H1, TrendPeriod, 0, MODE_EMA, PRICE_CLOSE, 0);
+   g_mtf_bullish_h1 = iMA_MQL4(Symbol(), PERIOD_H1, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
+                      iMA_MQL4(Symbol(), PERIOD_H1, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
    
    // Phân tích PVSRA để xác định ý định MM
    int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
