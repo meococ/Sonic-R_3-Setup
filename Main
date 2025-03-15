@@ -14,12 +14,15 @@
 #include <Trade\OrderInfo.mqh>
 #include <Trade\SymbolInfo.mqh>
 
-// MQL4 Constants for backward compatibility
+//+------------------------------------------------------------------+
+//| COMPATIBILITY LAYER - MQL4/MQL5                                   |
+//+------------------------------------------------------------------+
+
+// Operation types
 #define OP_BUY 0
 #define OP_SELL 1
-#define MODE_TRADES 0
-#define SELECT_BY_POS 0
-#define SELECT_BY_TICKET 1
+
+// Symbol info properties
 #define MODE_TICKVALUE SYMBOL_TRADE_TICK_VALUE
 #define MODE_LOTSTEP SYMBOL_VOLUME_STEP
 #define MODE_MINLOT SYMBOL_VOLUME_MIN
@@ -27,228 +30,149 @@
 #define MODE_SPREAD SYMBOL_SPREAD
 #define MODE_POINT SYMBOL_POINT
 
-// For compatibility with iMA, iHighest, iLowest functions
-enum ENUM_MQL4_APPLIED_PRICE
-{
-   MQL4_PRICE_CLOSE = 1,   // Giá đóng cửa
-   MQL4_PRICE_OPEN = 0,    // Giá mở cửa
-   MQL4_PRICE_HIGH = 2,    // Giá cao nhất
-   MQL4_PRICE_LOW = 3,     // Giá thấp nhất
-   MQL4_PRICE_MEDIAN = 4,  // Giá trung bình (high+low)/2
-   MQL4_PRICE_TYPICAL = 5, // Giá điển hình (high+low+close)/3
-   MQL4_PRICE_WEIGHTED = 6 // Giá có trọng số (high+low+close+close)/4
-};
+// Order selection
+#define MODE_TRADES 0
+#define SELECT_BY_POS 0
+#define SELECT_BY_TICKET 1
 
-// Định nghĩa lại các hằng số để sử dụng giá trị enum mới
-#define PRICE_CLOSE MQL4_PRICE_CLOSE
-#define PRICE_OPEN MQL4_PRICE_OPEN
-#define PRICE_HIGH MQL4_PRICE_HIGH
-#define PRICE_LOW MQL4_PRICE_LOW  
-#define PRICE_MEDIAN MQL4_PRICE_MEDIAN
-#define PRICE_TYPICAL MQL4_PRICE_TYPICAL
-#define PRICE_WEIGHTED MQL4_PRICE_WEIGHTED
-
+// MA methods
 #define MODE_SMA 0     // Simple moving average
 #define MODE_EMA 1     // Exponential moving average
 #define MODE_SMMA 2    // Smoothed moving average
 #define MODE_LWMA 3    // Linear weighted moving average
 
-// Cập nhật phiên bản 2.0 bao gồm:
-// - Quản lý rủi ro tin tức và sự cố (Phần 5)
-// - Quản lý lệnh tối ưu với TP phân tầng (Phần 6)
-// - Quy trình giao dịch hàng ngày (Phần 7)
+// Series modes for iHighest/iLowest
+#define MODE_OPEN ENUM_SERIESMODE::MODE_OPEN
+#define MODE_HIGH ENUM_SERIESMODE::MODE_HIGH
+#define MODE_LOW ENUM_SERIESMODE::MODE_LOW
+#define MODE_CLOSE ENUM_SERIESMODE::MODE_CLOSE
 
-// EA Input Parameters
-input string           General_Settings = "===== GENERAL SETTINGS =====";
-input bool             UseClassicStrategy = true;       // Use Classic Strategy
-input bool             UseScoutStrategy = true;         // Use Scout Strategy
-input bool             UsePVSRA = true;                 // Use PVSRA Analysis
-input double           RiskPercent = 0.5;              // Risk per trade (% of balance)
-input bool             AutoLotSize = true;             // Auto calculate lot size
-input double           FixedLotSize = 0.01;            // Fixed lot size (if AutoLotSize=false)
-input bool             NewsFilter = true;              // Avoid trading during news
-input int              MinutesBeforeNews = 30;         // Minutes to stop trading before news
-input int              MinutesAfterNews = 30;          // Minutes to resume trading after news
-
-input string           Dragon_Settings = "===== DRAGON (EMA) SETTINGS =====";
-input int              DragonPeriod = 34;              // Dragon EMA Period
-input int              TrendPeriod = 89;               // Trend EMA Period
-input int              MAPeriod = 200;                 // MA Period
-input ENUM_MQL4_APPLIED_PRICE DragonPrice = PRICE_CLOSE;      // Dragon Price Application
-input ENUM_MQL4_APPLIED_PRICE TrendPrice = PRICE_CLOSE;       // Trend Price Application
-input ENUM_MQL4_APPLIED_PRICE MAPrice = PRICE_CLOSE;          // MA Price Application
-
-input string           PVSRA_Settings = "===== PVSRA SETTINGS =====";
-input int              VolumePeriod = 10;              // Volume averaging period
-input double           ClimaxThreshold = 2.0;          // Volume climax threshold (multiplier)
-input double           RisingThreshold = 1.5;          // Rising volume threshold (multiplier)
-
-input string           Trade_Settings = "===== TRADE SETTINGS =====";
-input int              MaxTrades = 5;                  // Maximum simultaneous trades
-input double           TakeProfit = 50;                // Take profit in pips
-input double           StopLoss = 30;                  // Stop loss in pips
-input bool             UseTrailingStop = true;         // Use trailing stop
-input int              TrailingStart = 20;             // Start trailing after X pips profit
-input int              TrailingStep = 5;               // Trailing step in pips
-input bool             BreakEvenEnabled = true;        // Enable break even
-input int              BreakEvenProfit = 15;           // Pips in profit to move to break even
-input int              BreakEvenPips = 2;              // Pips above entry after break even
-
-input string           Scalping_Settings = "===== SCALPING SETTINGS =====";
-input bool             ScalpingMode = false;           // Enable scalping mode
-input int              ScalpingTakeProfit = 15;        // Scalping take profit in pips
-input int              ScalpingStopLoss = 10;          // Scalping stop loss in pips
-input bool             OnlyTradeMainSessions = true;   // Only trade during main sessions
-input int              LondonOpenHour = 8;             // London session open hour (GMT)
-input int              NewYorkOpenHour = 13;           // New York session open hour (GMT)
-input int              SessionOverlapHours = 4;        // Hours to trade during session overlap
-
-input string           PropFirm_Settings = "===== PROPFIRM SETTINGS =====";
-input bool             PropFirmMode = false;           // Enable Prop Firm mode
-input double           MaxDailyDrawdown = 2.0;         // Maximum daily drawdown %
-input double           MaxWeeklyDrawdown = 5.0;        // Maximum weekly drawdown %
-input double           MaxOpenRisk = 3.0;              // Maximum open risk %
-
-input string           Advanced_Risk_Management = "===== PHẦN 5: QUẢN LÝ RỦI RO TIN TỨC & SỰ CỐ =====";
-input bool             DetectMarketAnomalies = true;   // Phát hiện bất thường thị trường
-input double           MaxSpreadMultiplier = 3.0;      // Hệ số spread tối đa (x normal)
-input double           AbnormalVolatilityPips = 50.0;  // Biến động bất thường (pips/5 phút)
-input int              PostNewsWaitTime = 15;          // Thời gian đợi sau tin tức (phút)
-input bool             ReduceSizePostNews = true;      // Giảm kích thước lệnh sau tin tức
-input double           PostNewsSizePercent = 50.0;     // % kích thước lệnh sau tin tức
-input bool             UseExternalNewsCalendar = false;// Sử dụng lịch tin tức ngoài
-input string           NewsCalendarFile = "news.csv";  // File lịch tin tức
-
-input string           Position_Management = "===== PHẦN 6: QUẢN LÝ LỆNH TỐI ƯU =====";
-input bool             UseScoutPositionBuilding = true;// Sử dụng xây dựng vị thế Scout
-input int              MaxScoutPositions = 5;          // Số vị thế Scout tối đa
-input bool             UseMultipleTPs = true;          // Sử dụng nhiều mức TP
-input double           TP1Percent = 30.0;              // % vị thế chốt tại TP1
-input double           TP1Ratio = 1.5;                 // Tỉ lệ R:R cho TP1
-input double           TP2Percent = 30.0;              // % vị thế chốt tại TP2
-input double           TP2Ratio = 2.0;                 // Tỉ lệ R:R cho TP2
-input double           TP3Percent = 40.0;              // % vị thế chốt tại TP3
-input double           TP3Ratio = 3.0;                 // Tỉ lệ R:R cho TP3
-input bool             UseEMA89TrailingStop = true;    // Trailing stop theo EMA89
-input bool             AdjustTPsOnVolume = true;       // Điều chỉnh TP theo khối lượng
-
-input string           Daily_Process = "===== PHẦN 7: QUY TRÌNH GIAO DỊCH HÀNG NGÀY =====";
-input bool             UseMultiTimeframeAnalysis = true;// Phân tích đa khung thời gian
-input bool             LimitTradingHours = true;        // Giới hạn giờ giao dịch
-input int              TradingStartHour = 8;            // Giờ bắt đầu (GMT)
-input int              TradingEndHour = 16;             // Giờ kết thúc (GMT)
-input bool             SaveTradingLog = true;           // Lưu nhật ký giao dịch
-input string           LogFileName = "SonicR_Log.csv";  // Tên file nhật ký
-input bool             DailyMarketAnalysis = true;      // Phân tích thị trường hàng ngày
-
-// Global variables
-double g_point;
-double g_dragon_high, g_dragon_mid, g_dragon_low;
-double g_trend, g_ma;
-int g_total_buy = 0, g_total_sell = 0;
-double g_daily_high, g_daily_low;
-double g_session_start_balance;
-double g_week_start_balance;
-datetime g_last_news_time = 0;
-bool g_news_active = false;
-bool g_is_trading_session = false;
-
-// Biến cho phần 5 - Quản lý rủi ro tin tức và sự cố
-double g_normal_spread;
-double g_5min_high, g_5min_low;
-datetime g_last_anomaly_time = 0;
-bool g_market_anomaly_detected = false;
-int g_news_impact = 0; // 0=không có, 1=thấp, 2=trung bình, 3=cao
-
-// Cấu trúc lưu sự kiện tin tức
-struct NewsEvent {
-    datetime time;
-    string currency;
-    string title;
-    int impact; // 1=thấp, 2=trung bình, 3=cao
-};
-NewsEvent g_upcoming_news[10];
-int g_news_count = 0;
-
-// Biến cho phần 6 - Quản lý lệnh tối ưu
-int g_scout_positions_count = 0;
-int g_scout_ticket_array[10];
-double g_scout_tp_levels[3];
-double g_ema89 = 0;
-bool g_tp1_hit = false;
-bool g_tp2_hit = false;
-int g_current_phase = 0; // 0=phân tích, 1=xây dựng vị thế, 2=quản lý, 3=chốt lời
-
-// Biến cho phần 7 - Quy trình giao dịch hàng ngày
-datetime g_last_mtf_analysis = 0;
-bool g_mtf_bullish_d1 = false, g_mtf_bullish_h4 = false, g_mtf_bullish_h1 = false;
-bool g_mm_bullish = false; // True=bulls, False=bears
-int g_total_trades_today = 0;
-double g_total_profit_today = 0;
-datetime g_day_start_time;
-
-// Khai báo trước các hàm
-bool IsNewBar(ENUM_TIMEFRAMES timeframe);
-void PerformMultiTimeframeAnalysis();
-bool NeedUpdateMTFAnalysis();
-void AdjustTakeProfitOnPVSRA();
-bool IsScoutPosition(int ticket);
-void CheckPartialClose(int ticket, int type, double open_price, double profit_pips);
-void ExecuteScoutPositionBuilding();
-void OpenScoutPosition(int type, int position_index);
-void LoadNewsCalendar();
-bool DetectMarketAnomaly();
-void ManageAnomalyResponse();
-bool IsWithinTradingHours();
-void PerformDailyAnalysis();
-void InitTradingLog();
-void UpdateTradingLog();
-int AnalyzePVSRA(ENUM_TIMEFRAMES timeframe);
-
-// Custom iMA function for MQL4 compatibility
-double iMA_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift, int ma_method, ENUM_MQL4_APPLIED_PRICE applied_price, int shift_index)
+// Price type enums
+enum ENUM_MQL4_APPLIED_PRICE
 {
-   // Convert MQL4 method to MQL5 ENUM_MA_METHOD
-   ENUM_MA_METHOD method;
-   switch(ma_method)
-   {
-      case 0: method = MODE_SMA; break;   // Simple
-      case 1: method = MODE_EMA; break;   // Exponential
-      case 2: method = MODE_SMMA; break;  // Smoothed
-      case 3: method = MODE_LWMA; break;  // Linear weighted
-      default: method = MODE_SMA; break;
+   MQL4_PRICE_OPEN = 0,    // Open price
+   MQL4_PRICE_CLOSE = 1,   // Close price
+   MQL4_PRICE_HIGH = 2,    // High price
+   MQL4_PRICE_LOW = 3,     // Low price
+   MQL4_PRICE_MEDIAN = 4,  // Median price (high+low)/2
+   MQL4_PRICE_TYPICAL = 5, // Typical price (high+low+close)/3
+   MQL4_PRICE_WEIGHTED = 6 // Weighted price (high+low+close+close)/4
+};
+
+// Định nghĩa lại các hằng số để sử dụng giá trị enum mới
+#define PRICE_OPEN ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_OPEN
+#define PRICE_CLOSE ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_CLOSE
+#define PRICE_HIGH ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_HIGH
+#define PRICE_LOW ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_LOW  
+#define PRICE_MEDIAN ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_MEDIAN
+#define PRICE_TYPICAL ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_TYPICAL
+#define PRICE_WEIGHTED ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_WEIGHTED
+
+// Hằng số cho ánh xạ MQL4 -> MQL5 price types
+#define SYS_PRICE_OPEN ENUM_APPLIED_PRICE::PRICE_OPEN
+#define SYS_PRICE_CLOSE ENUM_APPLIED_PRICE::PRICE_CLOSE
+#define SYS_PRICE_HIGH ENUM_APPLIED_PRICE::PRICE_HIGH
+#define SYS_PRICE_LOW ENUM_APPLIED_PRICE::PRICE_LOW
+#define SYS_PRICE_MEDIAN ENUM_APPLIED_PRICE::PRICE_MEDIAN
+#define SYS_PRICE_TYPICAL ENUM_APPLIED_PRICE::PRICE_TYPICAL
+#define SYS_PRICE_WEIGHTED ENUM_APPLIED_PRICE::PRICE_WEIGHTED
+
+//+------------------------------------------------------------------+
+//| GLOBAL VARIABLES - Organized by functionality                     |
+//+------------------------------------------------------------------+
+
+// Market data variables
+double g_point = 0.0001;         // Point value adjusted for digits
+double g_daily_high = 0;         // Daily high price
+double g_daily_low = 0;          // Daily low price
+double g_normal_spread = 0;      // Normal spread value for anomaly detection
+double g_5min_high = 0;          // 5-minute high
+double g_5min_low = 0;           // 5-minute low
+
+// Technical indicators
+double g_dragon_mid = 0;         // EMA Dragon middle value
+double g_dragon_high = 0;        // EMA Dragon high value
+double g_dragon_low = 0;         // EMA Dragon low value
+double g_trend = 0;              // Trend indicator value
+double g_ema89 = 0;              // EMA 89 value for trailing stop
+double g_ma = 0;                 // MA value
+
+// Account status
+double g_session_start_balance = 0;  // Session start balance for drawdown calculation
+double g_week_start_balance = 0;     // Weekly start balance for drawdown calculation
+datetime g_day_start_time = 0;       // Day start time for daily stats
+
+// Position tracking
+int g_total_buy = 0;             // Total buy positions
+int g_total_sell = 0;            // Total sell positions
+
+// News and market anomaly data
+bool g_news_active = false;      // Is news period active
+int g_news_impact = 0;           // News impact level
+datetime g_last_news_time = 0;   // Last news event time
+bool g_market_anomaly_detected = false;  // Market anomaly detection flag
+datetime g_last_anomaly_time = 0;        // Last anomaly detected time
+
+// Scout position building
+bool g_mm_bullish = false;        // MM (Market Makers) bullish flag
+int g_scout_positions_count = 0;  // Count of Scout positions
+double g_scout_tp_levels[3];      // Scout take profit levels
+bool g_tp2_hit = false;           // TP2 hit flag
+
+// Multi-timeframe analysis
+datetime g_last_mtf_analysis = 0; // Last multi-timeframe analysis time
+bool g_mtf_bullish_d1 = false;    // D1 timeframe bullish
+bool g_mtf_bullish_h4 = false;    // H4 timeframe bullish
+bool g_mtf_bullish_h1 = false;    // H1 timeframe bullish
+
+// News event structures
+struct NewsEvent
+{
+   string title;     // News title
+   string currency;  // Currency affected
+   datetime time;    // News time
+   int impact;       // Impact level (1-3)
+};
+
+NewsEvent g_upcoming_news[];     // Array of upcoming news events
+int g_news_count = 0;            // Count of news events loaded
+
+// ... existing code ...
+
+//+------------------------------------------------------------------+
+//| Wrapper function for MQL4 iMA function                           |
+//+------------------------------------------------------------------+
+double iMA_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, int period, int ma_shift, 
+               int ma_method, ENUM_MQL4_APPLIED_PRICE applied_price, int shift_index)
+{
+   // Map MQL4 price type to MQL5 ENUM_APPLIED_PRICE
+   static ENUM_APPLIED_PRICE price_map[] = {
+      SYS_PRICE_OPEN,      // MQL4_PRICE_OPEN
+      SYS_PRICE_CLOSE,     // MQL4_PRICE_CLOSE
+      SYS_PRICE_HIGH,      // MQL4_PRICE_HIGH
+      SYS_PRICE_LOW,       // MQL4_PRICE_LOW
+      SYS_PRICE_MEDIAN,    // MQL4_PRICE_MEDIAN
+      SYS_PRICE_TYPICAL,   // MQL4_PRICE_TYPICAL
+      SYS_PRICE_WEIGHTED   // MQL4_PRICE_WEIGHTED
+   };
+   
+   // Validate applied_price index to prevent array out-of-bounds
+   int price_index = (int)applied_price;
+   if(price_index < 0 || price_index > 6) {
+      Print("iMA_MQL4: Invalid applied_price value: ", applied_price, ", using PRICE_CLOSE");
+      price_index = (int)MQL4_PRICE_CLOSE;
    }
    
-   // Convert MQL4 price type to MQL5 ENUM_APPLIED_PRICE
-   ENUM_APPLIED_PRICE price;
-   
-   // Chuyển đổi từ ENUM_MQL4_APPLIED_PRICE sang ENUM_APPLIED_PRICE
-   switch(applied_price)
-   {
-      case MQL4_PRICE_OPEN: price = PRICE_OPEN; break;
-      case MQL4_PRICE_CLOSE: price = PRICE_CLOSE; break;
-      case MQL4_PRICE_HIGH: price = PRICE_HIGH; break;
-      case MQL4_PRICE_LOW: price = PRICE_LOW; break;
-      case MQL4_PRICE_MEDIAN: price = PRICE_MEDIAN; break;
-      case MQL4_PRICE_TYPICAL: price = PRICE_TYPICAL; break;
-      case MQL4_PRICE_WEIGHTED: price = PRICE_WEIGHTED; break;
-      default: 
-         Print("iMA_MQL4: Unrecognized applied_price value: ", applied_price, ", using PRICE_CLOSE");
-         price = PRICE_CLOSE; 
-         break;
-   }
-   
-   // Call MQL5 version of iMA
-   double ma[];
-   int handle = ::iMA(symbol, timeframe, period, 0, method, price);
-   if(handle == INVALID_HANDLE)
-   {
+   // Create indicator handle
+   int handle = ::iMA(symbol, timeframe, period, ma_shift, (ENUM_MA_METHOD)ma_method, price_map[price_index]);
+   if(handle == INVALID_HANDLE) {
       Print("Error creating MA indicator: ", GetLastError());
       return 0;
    }
    
-   if(CopyBuffer(handle, 0, shift_index, 1, ma) <= 0)
-   {
+   // Copy indicator data
+   double ma[];
+   if(CopyBuffer(handle, 0, shift_index, 1, ma) <= 0) {
       Print("Error copying MA data: ", GetLastError());
       return 0;
    }
@@ -256,387 +180,85 @@ double iMA_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift,
    return ma[0];
 }
 
-// Định nghĩa rõ ràng cho các hằng số ENUM_SERIESMODE
-#define MODE_OPEN ENUM_SERIESMODE::MODE_OPEN
-#define MODE_HIGH ENUM_SERIESMODE::MODE_HIGH
-#define MODE_LOW ENUM_SERIESMODE::MODE_LOW
-#define MODE_CLOSE ENUM_SERIESMODE::MODE_CLOSE
-
-// Custom function for iHighest compatibility
+//+------------------------------------------------------------------+
+//| Wrapper function for MQL4 iHighest function                      |
+//+------------------------------------------------------------------+
 int iHighest_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, ENUM_MQL4_APPLIED_PRICE price_type, int count, int start)
 {
-   // Chuyển đổi rõ ràng giữa các kiểu enum để tránh cảnh báo
-   ENUM_SERIESMODE series_mode;
+   // Map MQL4 price type to MQL5 ENUM_SERIESMODE
+   static ENUM_SERIESMODE mode_map[] = {
+      MODE_OPEN,    // MQL4_PRICE_OPEN
+      MODE_CLOSE,   // MQL4_PRICE_CLOSE
+      MODE_HIGH,    // MQL4_PRICE_HIGH
+      MODE_LOW,     // MQL4_PRICE_LOW
+      MODE_OPEN,    // MQL4_PRICE_MEDIAN (fallback)
+      MODE_OPEN,    // MQL4_PRICE_TYPICAL (fallback)
+      MODE_OPEN     // MQL4_PRICE_WEIGHTED (fallback)
+   };
    
-   // Ánh xạ ENUM_MQL4_APPLIED_PRICE sang ENUM_SERIESMODE
-   switch(price_type)
-   {
-      case MQL4_PRICE_OPEN:
-         series_mode = MODE_OPEN;
-         break;
-      case MQL4_PRICE_CLOSE:
-         series_mode = MODE_CLOSE;
-         break;
-      case MQL4_PRICE_HIGH:
-         series_mode = MODE_HIGH;
-         break;
-      case MQL4_PRICE_LOW:
-         series_mode = MODE_LOW;
-         break;
-      default:
-         series_mode = MODE_HIGH; // Default cho iHighest
-         Print("iHighest_MQL4: Không nhận dạng được price_type, sử dụng MODE_HIGH");
-         break;
+   // Validate price_type index to prevent array out-of-bounds
+   int mode_index = (int)price_type;
+   if(mode_index < 0 || mode_index > 6) {
+      Print("iHighest_MQL4: Invalid price_type value: ", price_type, ", using MODE_HIGH");
+      return iHighest(symbol, timeframe, MODE_HIGH, count, start);
    }
    
-   return iHighest(symbol, timeframe, series_mode, count, start);
+   // Handle special price types that don't have direct mapping
+   if(mode_index >= 4) {
+      Print("iHighest_MQL4: Complex price types not directly supported, using MODE_HIGH");
+      return iHighest(symbol, timeframe, MODE_HIGH, count, start);
+   }
+   
+   return iHighest(symbol, timeframe, mode_map[mode_index], count, start);
 }
 
-// Custom function for iLowest compatibility
+//+------------------------------------------------------------------+
+//| Wrapper function for MQL4 iLowest function                       |
+//+------------------------------------------------------------------+
 int iLowest_MQL4(string symbol, ENUM_TIMEFRAMES timeframe, ENUM_MQL4_APPLIED_PRICE price_type, int count, int start)
 {
-   // Chuyển đổi rõ ràng giữa các kiểu enum để tránh cảnh báo
-   ENUM_SERIESMODE series_mode;
+   // Map MQL4 price type to MQL5 ENUM_SERIESMODE
+   static ENUM_SERIESMODE mode_map[] = {
+      MODE_OPEN,    // MQL4_PRICE_OPEN
+      MODE_CLOSE,   // MQL4_PRICE_CLOSE
+      MODE_HIGH,    // MQL4_PRICE_HIGH
+      MODE_LOW,     // MQL4_PRICE_LOW
+      MODE_OPEN,    // MQL4_PRICE_MEDIAN (fallback)
+      MODE_OPEN,    // MQL4_PRICE_TYPICAL (fallback)
+      MODE_OPEN     // MQL4_PRICE_WEIGHTED (fallback)
+   };
    
-   // Ánh xạ ENUM_MQL4_APPLIED_PRICE sang ENUM_SERIESMODE
-   switch(price_type)
-   {
-      case MQL4_PRICE_OPEN:
-         series_mode = MODE_OPEN;
-         break;
-      case MQL4_PRICE_CLOSE:
-         series_mode = MODE_CLOSE;
-         break;
-      case MQL4_PRICE_HIGH:
-         series_mode = MODE_HIGH;
-         break;
-      case MQL4_PRICE_LOW:
-         series_mode = MODE_LOW;
-         break;
-      default:
-         series_mode = MODE_LOW; // Default cho iLowest
-         Print("iLowest_MQL4: Không nhận dạng được price_type, sử dụng MODE_LOW");
-         break;
+   // Validate price_type index to prevent array out-of-bounds
+   int mode_index = (int)price_type;
+   if(mode_index < 0 || mode_index > 6) {
+      Print("iLowest_MQL4: Invalid price_type value: ", price_type, ", using MODE_LOW");
+      return iLowest(symbol, timeframe, MODE_LOW, count, start);
    }
    
-   return iLowest(symbol, timeframe, series_mode, count, start);
+   // Handle special price types that don't have direct mapping
+   if(mode_index >= 4) {
+      Print("iLowest_MQL4: Complex price types not directly supported, using MODE_LOW");
+      return iLowest(symbol, timeframe, MODE_LOW, count, start);
+   }
+   
+   return iLowest(symbol, timeframe, mode_map[mode_index], count, start);
 }
 
-//+------------------------------------------------------------------+
-//| Expert initialization function                                    |
-//+------------------------------------------------------------------+
-int OnInit()
-{
-   // Set point value with account digit consideration
-   g_point = Point();
-   if(_Digits == 3 || _Digits == 5)
-      g_point *= 10;
-      
-   // Store initial balance values
-   g_session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   g_week_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   
-   // Check if we're in a new week
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   if(dt.day_of_week == 1 && dt.hour < 4)
-      g_week_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   
-   // Calculate daily high/low
-   CalculateDailyRange();
-   
-   // Phần 5: Khởi tạo quản lý rủi ro tin tức và sự cố
-   g_normal_spread = (double)SymbolInfoInteger(Symbol(), SYMBOL_SPREAD) * Point();
-   int highest_idx = iHighest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_HIGH, 1, 0);
-   int lowest_idx = iLowest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_LOW, 1, 0);
-   g_5min_high = iHigh(Symbol(), PERIOD_M5, highest_idx);
-   g_5min_low = iLow(Symbol(), PERIOD_M5, lowest_idx);
-   
-   if(UseExternalNewsCalendar)
-      LoadNewsCalendar();
-   
-   // Phần 6: Khởi tạo quản lý lệnh tối ưu
-   if(UseMultipleTPs)
-   {
-      for(int i = 0; i < 3; i++)
-         g_scout_tp_levels[i] = 0;
-   }
-   
-   // Phần 7: Khởi tạo quy trình giao dịch hàng ngày
-   datetime dt_now = TimeCurrent();
-   MqlDateTime now_struct;
-   TimeToStruct(dt_now, now_struct);
-   
-   // Set the date part only (reset time to 00:00:00)
-   MqlDateTime date_only;
-   date_only.year = now_struct.year;
-   date_only.mon = now_struct.mon;
-   date_only.day = now_struct.day;
-   date_only.hour = 0;
-   date_only.min = 0;
-   date_only.sec = 0;
-   
-   g_day_start_time = StructToTime(date_only);
-   
-   if(SaveTradingLog)
-      InitTradingLog();
-   
-   if(DailyMarketAnalysis)
-      PerformDailyAnalysis();
-   
-   Print("Sonic R Advanced EA v2.0 khởi tạo thành công!");
-   return(INIT_SUCCEEDED);
-}
+// ... existing code ...
 
 //+------------------------------------------------------------------+
-//| Expert deinitialization function                                  |
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
-{
-   // Clean up code if needed
-}
-
-//+------------------------------------------------------------------+
-//| Expert tick function                                              |
-//+------------------------------------------------------------------+
-void OnTick()
-{
-   // Process only on new price or every 5 seconds at most
-   static datetime last_processed_time = 0;
-   datetime current_time = TimeCurrent();
-   
-   if(current_time == last_processed_time)
-      return;
-      
-   // Limit processing frequency during low volatility
-   double high1 = iHigh(Symbol(), PERIOD_CURRENT, 1);
-   double high2 = iHigh(Symbol(), PERIOD_CURRENT, 2);
-   double low1 = iLow(Symbol(), PERIOD_CURRENT, 1);
-   double low2 = iLow(Symbol(), PERIOD_CURRENT, 2);
-   
-   if(current_time - last_processed_time < 5 && high1 == high2 && low1 == low2)
-      return;
-   
-   last_processed_time = current_time;
-   
-   // Phần 5: Kiểm tra sự cố thị trường trước mọi hành động
-   if(DetectMarketAnomalies && DetectMarketAnomaly())
-   {
-      Print("Phát hiện bất thường thị trường - Hạn chế giao dịch!");
-      ManageAnomalyResponse();
-      return;
-   }
-   
-   // Phần 7: Kiểm tra giờ giao dịch
-   if(LimitTradingHours && !IsWithinTradingHours())
-   {
-      // Chỉ quản lý vị thế hiện có, không mở vị thế mới
-      ManageOpenPositions();
-      return;
-   }
-   
-   // Count open positions first to determine if we can open more
-   CountOpenPositions();
-   
-   // Manage existing positions before opening new ones
-   ManageOpenPositions();
-   
-   // Phần 7: Phân tích đa khung thời gian định kỳ
-   if(UseMultiTimeframeAnalysis && NeedUpdateMTFAnalysis())
-   {
-      PerformMultiTimeframeAnalysis();
-   }
-   
-   // Check if trading is allowed based on various conditions
-   if(!IsTradingAllowed())
-      return;
-      
-   // Update trading session status
-   g_is_trading_session = IsTradingSession();
-   
-   // Skip indicator updates if we already have max positions
-   if(g_total_buy + g_total_sell < MaxTrades)
-   {
-      // Update Dragon, Trend and MA values
-      UpdateIndicators();
-      
-      // Phần 6: Kiểm tra và cập nhật TP dựa trên PVSRA nếu cần
-      if(UseMultipleTPs && AdjustTPsOnVolume)
-      {
-         int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-         if(g_mm_bullish && pvsra_signal < 0) // MM chuyển từ bulls sang bears
-         {
-            Print("PVSRA: MM chuyển từ Bulls sang Bears - Điều chỉnh TP");
-            AdjustTakeProfitOnPVSRA();
-         }
-         else if(!g_mm_bullish && pvsra_signal > 0) // MM chuyển từ bears sang bulls 
-         {
-            Print("PVSRA: MM chuyển từ Bears sang Bulls - Điều chỉnh TP");
-            AdjustTakeProfitOnPVSRA();
-         }
-      }
-   
-      // Look for new trading opportunities based on current phase
-      if(g_total_buy + g_total_sell < MaxTrades)
-      {
-         // If we're in scalping mode, use optimized settings
-         if(ScalpingMode && g_is_trading_session)
-         {
-            FindScalpingOpportunities();
-         }
-         // If we're in prop firm mode, be extra cautious
-         else if(PropFirmMode)
-         {
-            if(IsDrawdownAcceptable())
-               FindPropFirmOpportunities();
-         }
-         // Phần 6: Nếu sử dụng Scout Position Building
-         else if(UseScoutPositionBuilding && g_scout_positions_count < MaxScoutPositions)
-         {
-            ExecuteScoutPositionBuilding();
-         }
-         // Otherwise use standard Sonic R approach
-         else
-         {
-            // Look for Classic setup
-            if(UseClassicStrategy)
-               FindClassicSetup();
-               
-            // Look for Scout setup
-            if(UseScoutStrategy)
-               FindScoutSetup();
-         }
-      }
-   }
-   
-   // Phần 7: Ghi nhật ký giao dịch - only on new hour
-   if(SaveTradingLog && IsNewBar(PERIOD_H1))
-   {
-      UpdateTradingLog();
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Check if trading is allowed                                       |
-//+------------------------------------------------------------------+
-bool IsTradingAllowed()
-{
-   // Check if trading is allowed on the current symbol
-   if(SymbolInfoInteger(Symbol(), SYMBOL_TRADE_MODE) == SYMBOL_TRADE_MODE_DISABLED)
-      return false;
-      
-   // Check if we're in a propfirm mode and if drawdown limits are respected
-   if(PropFirmMode && !IsDrawdownAcceptable())
-      return false;
-      
-   // Check for news filter
-   if(NewsFilter && IsNewsTime())
-      return false;
-      
-   // Check if we should only trade during main sessions
-   if(OnlyTradeMainSessions && !g_is_trading_session)
-      return false;
-      
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Check if current time is within trading sessions                  |
-//+------------------------------------------------------------------+
-bool IsTradingSession()
-{
-   // Get current hour
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   int current_hour = dt.hour;
-   
-   // London session
-   if(current_hour >= LondonOpenHour && current_hour < LondonOpenHour + SessionOverlapHours)
-      return true;
-      
-   // New York session
-   if(current_hour >= NewYorkOpenHour && current_hour < NewYorkOpenHour + SessionOverlapHours)
-      return true;
-      
-   // London-NY overlap is the most liquid time
-   if(current_hour >= LondonOpenHour && current_hour < NewYorkOpenHour + SessionOverlapHours)
-      return true;
-      
-   return false;
-}
-
-//+------------------------------------------------------------------+
-//| Update indicator values                                           |
-//+------------------------------------------------------------------+
-void UpdateIndicators()
-{
-   static datetime last_update = 0;
-   static int update_frequency = 2; // Update every 2 seconds
-   
-   datetime current_time = TimeCurrent();
-   
-   // Only update indicators if needed (reducing unnecessary calculations)
-   if(last_update == 0 || current_time - last_update >= update_frequency)
-   {
-      // Calculate Dragon (EMA34) values
-      g_dragon_mid = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, DragonPrice, 0);
-      g_dragon_high = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_HIGH, 0);
-      g_dragon_low = iMA_MQL4(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_LOW, 0);
-      
-      // Calculate Trend (EMA89) value
-      g_trend = iMA_MQL4(Symbol(), PERIOD_CURRENT, TrendPeriod, 0, MODE_EMA, TrendPrice, 0);
-      g_ema89 = g_trend; // Use the same value for EMA89
-      
-      // Calculate MA200 value
-      g_ma = iMA_MQL4(Symbol(), PERIOD_CURRENT, MAPeriod, 0, MODE_SMA, MAPrice, 0);
-      
-      last_update = current_time;
-   }
-   
-   // Count open positions - this should be done on every tick
-   CountOpenPositions();
-}
-
-//+------------------------------------------------------------------+
-//| Count open positions for current symbol                           |
-//+------------------------------------------------------------------+
-void CountOpenPositions()
-{
-   g_total_buy = 0;
-   g_total_sell = 0;
-   
-   string current_symbol = Symbol();
-   
-   for(int i = 0; i < PositionsTotal(); i++)
-   {
-      // Use PositionGetTicket instead of PositionSelectByIndex
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      
-      if(PositionGetString(POSITION_SYMBOL) == current_symbol)
-      {
-         ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-         if(type == POSITION_TYPE_BUY) 
-            g_total_buy++;
-         else if(type == POSITION_TYPE_SELL) 
-            g_total_sell++;
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Analyze PVSRA to determine if MMs are bulls or bears              |
+//| Improved PVSRA Analysis with caching and performance optimizations |
 //+------------------------------------------------------------------+
 int AnalyzePVSRA(ENUM_TIMEFRAMES timeframe)
 {
    if(!UsePVSRA) return 0; // 0 = Neutral, 1 = Bulls, -1 = Bears
    
-   // Cache PVSRA results to avoid redundant calculations
+   // Cache results for better performance
    static int last_result = 0;
    static datetime last_update_time = 0;
    static ENUM_TIMEFRAMES last_timeframe = PERIOD_CURRENT;
    
-   // Only update PVSRA analysis on new bar or different timeframe
+   // Only update PVSRA analysis on new bar or different timeframe request
    datetime current_bar_time = iTime(Symbol(), timeframe, 0);
    if(last_timeframe == timeframe && last_update_time == current_bar_time && last_update_time != 0)
    {
@@ -647,1255 +269,566 @@ int AnalyzePVSRA(ENUM_TIMEFRAMES timeframe)
    last_update_time = current_bar_time;
    last_timeframe = timeframe;
    
-   // This is a simplified PVSRA analysis - would need to be expanded
-   // to include proper volume analysis relative to SR levels
-   
+   // Optimize volume data retrieval by using a single array access
    double volumes[10];
+   double closes[10];
    double avg_volume = 0;
    
-   // Get recent volumes - use local arrays and one iteration
+   // Optimization: Get all volumes in one go with CopyTickVolume
+   if(CopyTickVolume(Symbol(), timeframe, 0, 10, volumes) <= 0)
+   {
+      Print("Error getting volume data: ", GetLastError());
+      return 0; // Return neutral on error
+   }
+   
+   // Get price data in one go for better performance
+   if(CopyClose(Symbol(), timeframe, 0, 10, closes) <= 0)
+   {
+      Print("Error getting price data: ", GetLastError());
+      return 0; // Return neutral on error
+   }
+   
+   // Calculate average volume efficiently
    for(int i = 0; i < 10; i++)
    {
-      volumes[i] = (double)iVolume(Symbol(), timeframe, i);
       avg_volume += volumes[i];
    }
-   avg_volume /= 10;
+   avg_volume /= 10.0;
    
-   // Check for high volume at price levels
-   double current_price = iClose(Symbol(), timeframe, 0);
-   double prev_price = iClose(Symbol(), timeframe, 1);
-   double volume_ratio = volumes[0] / avg_volume;
+   // Current price metrics
+   double current_price = closes[0];
+   double prev_price = closes[1];
+   double volume_ratio = volumes[0] / (avg_volume > 0 ? avg_volume : 1); // Avoid divide by zero
    
-   // Get nearest whole and half numbers
+   // Calculate support/resistance levels
    double whole_number = MathFloor(current_price);
    double half_number = whole_number + 0.5;
    
-   // Check if price is near SR level - use precalculated threshold
-   double sr_threshold = 0.0020; 
-   bool near_sr_level = (MathAbs(current_price - whole_number) < sr_threshold) || 
-                        (MathAbs(current_price - half_number) < sr_threshold);
+   // Distance to nearest SR level
+   double dist_to_whole = MathAbs(current_price - whole_number);
+   double dist_to_half = MathAbs(current_price - half_number);
+   
+   // Determine the nearest SR level
+   double sr_threshold = 0.0020;
+   bool near_sr_level = (dist_to_whole < sr_threshold || dist_to_half < sr_threshold);
+   
+   // Calculate price volatility for comparison
+   double high_3 = iHigh(Symbol(), timeframe, ArrayMaximum(closes, 0, 3));
+   double low_3 = iLow(Symbol(), timeframe, ArrayMinimum(closes, 0, 3));
+   double volatility = high_3 - low_3;
    
    int result = 0; // Default neutral
    
-   // MM are usually bulls if high volume below SR levels
-   if(volume_ratio > RisingThreshold && current_price < prev_price && near_sr_level)
+   // Enhanced detection logic with volatility context
+   if(near_sr_level)
    {
-      result = 1; // Bulls
-   }
-   // MM are usually bears if high volume above SR levels
-   else if(volume_ratio > RisingThreshold && current_price > prev_price && near_sr_level)
-   {
-      result = -1; // Bears
+      // Volume climax at support with price moving up = bulls
+      if(volume_ratio > RisingThreshold && current_price > prev_price && 
+         (dist_to_whole < dist_to_half && current_price > whole_number))
+      {
+         result = 1; // Bulls - accumulation at support
+      }
+      // Volume climax at resistance with price moving down = bears
+      else if(volume_ratio > RisingThreshold && current_price < prev_price &&
+              (dist_to_half < dist_to_whole && current_price < half_number))
+      {
+         result = -1; // Bears - distribution at resistance
+      }
+      // Extremely high volume with SR test = smart money interest
+      else if(volume_ratio > ClimaxThreshold)
+      {
+         // Determine direction based on price action after volume spike
+         if(current_price > prev_price) result = 1; // Bulls
+         else if(current_price < prev_price) result = -1; // Bears
+      }
    }
    
-   // Cache the result
+   // Detection for areas away from SR levels based on volatility
+   if(result == 0 && volatility > 0)
+   {
+      // High volume relative to volatility suggests strong interest
+      double vol_to_range_ratio = volumes[0] / (volatility * 10000.0);
+      
+      if(vol_to_range_ratio > 5.0) // Significant volume relative to range
+      {
+         if(current_price > prev_price) result = 1; // Bulls
+         else if(current_price < prev_price) result = -1; // Bears
+      }
+   }
+   
+   // Cache result
    last_result = result;
    return result;
 }
 
 //+------------------------------------------------------------------+
-//| Find Classic Sonic R setup                                        |
+//| Optimized Position Management with Trailing Stop and Breakeven    |
 //+------------------------------------------------------------------+
-void FindClassicSetup()
+void ManageOpenPositions()
 {
-   double current_close = iClose(Symbol(), PERIOD_CURRENT, 0);
-   double current_low = iLow(Symbol(), PERIOD_CURRENT, 1);
-   double current_high = iHigh(Symbol(), PERIOD_CURRENT, 1);
-   double prev_close = iClose(Symbol(), PERIOD_CURRENT, 1);
-
-   // LONG Setup
-   if(g_dragon_mid > g_trend && g_trend > g_ma) // Bullish alignment
+   // Optimize: Use static CTrade instead of creating new objects
+   static CTrade trade;
+   
+   // Pre-declare variables for better performance
+   ulong ticket;
+   double open_price, current_price, stop_loss, take_profit;
+   double profit_pips, new_sl;
+   ENUM_POSITION_TYPE position_type;
+   
+   // Get symbol information once for all calculations
+   double point = SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+   double ask = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+   double bid = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+   string current_symbol = Symbol();
+   
+   // Process all positions in a single loop
+   for(int i = 0; i < PositionsTotal(); i++)
    {
-      // Price above Dragon, Dragon above Trend, Trend above MA
-      if(current_close > g_dragon_high && g_dragon_mid > g_trend && g_trend > g_ma)
-      {
-         // Check for a pullback/retest
-         if(current_low < g_dragon_mid && prev_close > g_dragon_mid)
-         {
-            // Confirm with PVSRA
-            int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-            if(pvsra_signal >= 0) // Neutral or bullish
-            {
-               OpenTrade(OP_BUY);
-            }
-         }
-      }
-   }
-   
-   // SHORT Setup
-   if(g_dragon_mid < g_trend && g_trend < g_ma) // Bearish alignment
-   {
-      // Price below Dragon, Dragon below Trend, Trend below MA
-      if(current_close < g_dragon_low && g_dragon_mid < g_trend && g_trend < g_ma)
-      {
-         // Check for a pullback/retest
-         if(current_high > g_dragon_mid && prev_close < g_dragon_mid)
-         {
-            // Confirm with PVSRA
-            int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-            if(pvsra_signal <= 0) // Neutral or bearish
-            {
-               OpenTrade(OP_SELL);
-            }
-         }
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Find Scout setup using PVSRA                                      |
-//+------------------------------------------------------------------+
-void FindScoutSetup()
-{
-   // Scout is more PVSRA dependent
-   int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-   
-   // Get current prices
-   double current_close = iClose(Symbol(), PERIOD_CURRENT, 0);
-   double prev_close_5 = iClose(Symbol(), PERIOD_CURRENT, 5);
-   double prev_low_3 = iLow(Symbol(), PERIOD_CURRENT, 3);
-   double prev_high_3 = iHigh(Symbol(), PERIOD_CURRENT, 3);
-   
-   // LONG Scout
-   if(pvsra_signal > 0) // MMs are bulls
-   {
-      // Look for price pulling back to key levels
-      if(IsNearSRLevel(current_close))
-      {
-         // Check if price has dropped recently
-         if(current_close < prev_close_5 && current_close > prev_low_3)
-         {
-            OpenTrade(OP_BUY);
-         }
-      }
-   }
-   
-   // SHORT Scout
-   if(pvsra_signal < 0) // MMs are bears
-   {
-      // Look for price pushing up to key levels
-      if(IsNearSRLevel(current_close))
-      {
-         // Check if price has risen recently
-         if(current_close > prev_close_5 && current_close < prev_high_3)
-         {
-            OpenTrade(OP_SELL);
-         }
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Find scalping opportunities                                       |
-//+------------------------------------------------------------------+
-void FindScalpingOpportunities()
-{
-   // For scalping we use faster EMAs
-   double fast_ema = iMA_MQL4(Symbol(), PERIOD_M5, 21, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-   double medium_ema = iMA_MQL4(Symbol(), PERIOD_M5, 55, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-   double fast_ema_prev = iMA_MQL4(Symbol(), PERIOD_M5, 21, 0, MODE_EMA, MQL4_PRICE_CLOSE, 1);
-   double medium_ema_prev = iMA_MQL4(Symbol(), PERIOD_M5, 55, 0, MODE_EMA, MQL4_PRICE_CLOSE, 1);
-   
-   // Get current prices
-   double current_close = iClose(Symbol(), PERIOD_CURRENT, 0);
-   double current_high = iHigh(Symbol(), PERIOD_CURRENT, 0);
-   double current_low = iLow(Symbol(), PERIOD_CURRENT, 0);
-   
-   // LONG scalp
-   if(fast_ema > medium_ema && fast_ema > fast_ema_prev && medium_ema > medium_ema_prev)
-   {
-      // Look for quick pullback to fast EMA
-      if(current_low <= fast_ema && current_close > fast_ema)
-      {
-         OpenScalpTrade(OP_BUY);
-      }
-   }
-   
-   // SHORT scalp
-   if(fast_ema < medium_ema && fast_ema < fast_ema_prev && medium_ema < medium_ema_prev)
-   {
-      // Look for quick pullback to fast EMA
-      if(current_high >= fast_ema && current_close < fast_ema)
-      {
-         OpenScalpTrade(OP_SELL);
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Find Prop Firm suitable opportunities (high probability)          |
-//+------------------------------------------------------------------+
-void FindPropFirmOpportunities()
-{
-   // For prop firms we need higher probability setups with clear signals
-   
-   // Check multiple timeframes
-   bool h4_bullish = iMA_MQL4(Symbol(), PERIOD_H4, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
-                     iMA_MQL4(Symbol(), PERIOD_H4, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-                     
-   bool h1_bullish = iMA_MQL4(Symbol(), PERIOD_H1, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
-                     iMA_MQL4(Symbol(), PERIOD_H1, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-   
-   bool m15_bullish = g_dragon_mid > g_trend;
-   
-   // Get price data
-   double current_close = iClose(Symbol(), PERIOD_CURRENT, 0);
-   double current_low = iLow(Symbol(), PERIOD_CURRENT, 0);
-   double prev_low = iLow(Symbol(), PERIOD_CURRENT, 1);
-   double current_high = iHigh(Symbol(), PERIOD_CURRENT, 0);
-   double prev_high = iHigh(Symbol(), PERIOD_CURRENT, 1);
-   double prev_close = iClose(Symbol(), PERIOD_CURRENT, 1);
-   
-   // LONG - Need confirmation from multiple timeframes
-   if(h4_bullish && h1_bullish && m15_bullish)
-   {
-      // Need perfect retest setup
-      if(prev_low < g_dragon_mid && prev_close > g_dragon_mid && current_low < g_dragon_mid && current_close > g_dragon_mid)
-      {
-         // Confirm with PVSRA
-         int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-         if(pvsra_signal > 0) // MMs are bulls
-         {
-            // With smaller size for prop firm safety
-            OpenPropFirmTrade(OP_BUY);
-         }
-      }
-   }
-   
-   // SHORT - Need confirmation from multiple timeframes
-   if(!h4_bullish && !h1_bullish && !m15_bullish)
-   {
-      // Need perfect retest setup
-      if(prev_high > g_dragon_mid && prev_close < g_dragon_mid && current_high > g_dragon_mid && current_close < g_dragon_mid)
-      {
-         // Confirm with PVSRA
-         int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-         if(pvsra_signal < 0) // MMs are bears
-         {
-            // With smaller size for prop firm safety
-            OpenPropFirmTrade(OP_SELL);
-         }
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Check if price is near SR level (whole, half, quarter numbers)    |
-//+------------------------------------------------------------------+
-bool IsNearSRLevel(double price)
-{
-   double whole_number = MathFloor(price);
-   double quarter1 = whole_number + 0.25;
-   double half_number = whole_number + 0.5;
-   double quarter3 = whole_number + 0.75;
-   
-   if(MathAbs(price - whole_number) < 0.0020) return true; // Near whole number
-   if(MathAbs(price - half_number) < 0.0020) return true;  // Near half number
-   if(MathAbs(price - quarter1) < 0.0020) return true;     // Near quarter number
-   if(MathAbs(price - quarter3) < 0.0020) return true;     // Near 3/4 number
-   
-   return false;
-}
-
-//+------------------------------------------------------------------+
-//| Open a trade with calculated lot size                             |
-//+------------------------------------------------------------------+
-void OpenTrade(int type)
-{
-   double lot_size = CalculateLotSize(type);
-   
-   double sl = 0, tp = 0;
-   double current_price = 0;
-   
-   // Convert MQL4 types to MQL5 types
-   ENUM_ORDER_TYPE order_type;
-   if(type == 0) // MQL4 OP_BUY
-   {
-      order_type = ORDER_TYPE_BUY;
-      current_price = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
-   }
-   else // MQL4 OP_SELL
-   {
-      order_type = ORDER_TYPE_SELL;
-      current_price = SymbolInfoDouble(Symbol(), SYMBOL_BID);
-   }
-   
-   // Calculate Stop Loss and Take Profit
-   if(type == 0) // Buy
-   {
-      sl = current_price - StopLoss * g_point;
-      tp = current_price + TakeProfit * g_point;
-   }
-   else // Sell
-   {
-      sl = current_price + StopLoss * g_point;
-      tp = current_price - TakeProfit * g_point;
-   }
-   
-   // Create trade object and execute
-   CTrade trade;
-   trade.SetExpertMagicNumber(123456);
-   
-   if(!trade.PositionOpen(Symbol(), order_type, lot_size, current_price, sl, tp, "Sonic R EA"))
-   {
-      Print("Position open error: ", trade.ResultRetcode(), " - ", trade.ResultRetcodeDescription());
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Open a scalping trade with tighter parameters                     |
-//+------------------------------------------------------------------+
-void OpenScalpTrade(int type)
-{
-   double lot_size = CalculateLotSize(type) * 0.8; // Reduced size for scalping
-   
-   double sl = 0, tp = 0;
-   double current_price = 0;
-   
-   // Convert MQL4 types to MQL5 types
-   ENUM_ORDER_TYPE order_type;
-   if(type == 0) // MQL4 OP_BUY
-   {
-      order_type = ORDER_TYPE_BUY;
-      current_price = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
-   }
-   else // MQL4 OP_SELL
-   {
-      order_type = ORDER_TYPE_SELL;
-      current_price = SymbolInfoDouble(Symbol(), SYMBOL_BID);
-   }
-   
-   // Calculate Stop Loss and Take Profit for scalping
-   if(type == 0) // Buy
-   {
-      sl = current_price - ScalpingStopLoss * g_point;
-      tp = current_price + ScalpingTakeProfit * g_point;
-   }
-   else // Sell
-   {
-      sl = current_price + ScalpingStopLoss * g_point;
-      tp = current_price - ScalpingTakeProfit * g_point;
-   }
-   
-   // Create trade object and execute
-   CTrade trade;
-   trade.SetExpertMagicNumber(123456);
-   
-   if(!trade.PositionOpen(Symbol(), order_type, lot_size, current_price, sl, tp, "Sonic R Scalp"))
-   {
-      Print("Scalp position open error: ", trade.ResultRetcode(), " - ", trade.ResultRetcodeDescription());
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Calculate daily high, low and average range                       |
-//+------------------------------------------------------------------+
-void CalculateDailyRange()
-{
-   int highest_idx = iHighest_MQL4(Symbol(), PERIOD_D1, MQL4_PRICE_HIGH, 1, 0);
-   int lowest_idx = iLowest_MQL4(Symbol(), PERIOD_D1, MQL4_PRICE_LOW, 1, 0);
-   
-   if(highest_idx >= 0)
-      g_daily_high = iHigh(Symbol(), PERIOD_D1, highest_idx);
-   else
-      g_daily_high = iHigh(Symbol(), PERIOD_D1, 0);
+      // Get position ticket
+      ticket = PositionGetTicket(i);
+      if(ticket == 0 || !PositionSelectByTicket(ticket)) continue;
       
-   if(lowest_idx >= 0)
-      g_daily_low = iLow(Symbol(), PERIOD_D1, lowest_idx);
-   else
-      g_daily_low = iLow(Symbol(), PERIOD_D1, 0);
-}
-
-//+------------------------------------------------------------------+
-//| Check if current time is around important news                    |
-//+------------------------------------------------------------------+
-bool IsNewsTime()
-{
-   if(!NewsFilter) return false;
-   
-   datetime current_time = TimeCurrent();
-   
-   // Phần 5: Quản lý tin tức nâng cao
-   if(UseExternalNewsCalendar)
-   {
-      // Kiểm tra các sự kiện tin tức đã tải
-      for(int i = 0; i < g_news_count; i++)
+      // Only manage positions for current symbol
+      if(PositionGetString(POSITION_SYMBOL) != current_symbol) continue;
+      
+      // Get position details
+      position_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+      current_price = PositionGetDouble(POSITION_PRICE_CURRENT);
+      stop_loss = PositionGetDouble(POSITION_SL);
+      take_profit = PositionGetDouble(POSITION_TP);
+      
+      // Calculate profit in pips
+      profit_pips = position_type == POSITION_TYPE_BUY ? 
+                   (current_price - open_price) / g_point : 
+                   (open_price - current_price) / g_point;
+      
+      // Break Even Logic
+      if(BreakEvenEnabled && profit_pips >= BreakEvenProfit)
       {
-         // Lấy ảnh hưởng của tin tức (cao nhất)
-         string pair_currency1 = StringSubstr(Symbol(), 0, 3);
-         string pair_currency2 = StringSubstr(Symbol(), 3, 3);
+         // Set breakeven stop
+         new_sl = position_type == POSITION_TYPE_BUY ?
+                 open_price + BreakEvenPips * g_point :
+                 open_price - BreakEvenPips * g_point;
          
-         if(g_upcoming_news[i].currency == pair_currency1 || g_upcoming_news[i].currency == pair_currency2)
+         // Only modify if the new SL is better than current
+         bool need_modify = (position_type == POSITION_TYPE_BUY && (stop_loss < new_sl || stop_loss == 0)) ||
+                           (position_type == POSITION_TYPE_SELL && (stop_loss > new_sl || stop_loss == 0));
+         
+         if(need_modify)
          {
-            // Tin tức ảnh hưởng đến cặp tiền hiện tại
-            if(current_time < g_upcoming_news[i].time && 
-               current_time > g_upcoming_news[i].time - MinutesBeforeNews * 60)
-            {
-               g_news_active = true;
-               g_news_impact = g_upcoming_news[i].impact;
-               g_last_news_time = g_upcoming_news[i].time;
-               Print("Sắp có tin tức cho ", Symbol(), ": ", g_upcoming_news[i].title);
-               return true;
-            }
+            trade.PositionModify(ticket, new_sl, take_profit);
+            Print("Breakeven: Ticket ", ticket, ", New SL: ", 
+                  DoubleToString(new_sl, _Digits));
+         }
+      }
+      
+      // Trailing Stop Logic
+      if(UseTrailingStop && profit_pips >= TrailingStart)
+      {
+         // Calculate appropriate trailing stop
+         new_sl = position_type == POSITION_TYPE_BUY ?
+                 current_price - TrailingStep * g_point :
+                 current_price + TrailingStep * g_point;
+         
+         // Only modify if the trail is meaningful
+         bool need_trail = (position_type == POSITION_TYPE_BUY && stop_loss < new_sl - g_point) ||
+                          (position_type == POSITION_TYPE_SELL && (stop_loss > new_sl + g_point || stop_loss == 0));
+         
+         if(need_trail)
+         {
+            trade.PositionModify(ticket, new_sl, take_profit);
+            Print("Trailing: Ticket ", ticket, ", New SL: ", 
+                  DoubleToString(new_sl, _Digits));
+         }
+      }
+      
+      // Advanced trailing using EMA89
+      if(UseEMA89TrailingStop && g_ema89 > 0)
+      {
+         if(position_type == POSITION_TYPE_BUY && current_price > g_ema89 && profit_pips > 0)
+         {
+            // Use EMA89 as trailing stop for buy positions
+            new_sl = g_ema89 - 5 * g_point; // 5 pip buffer below EMA
             
-            // Thời gian sau tin tức
-            if(current_time > g_upcoming_news[i].time && 
-               current_time < g_upcoming_news[i].time + PostNewsWaitTime * 60)
+            if(stop_loss < new_sl - g_point) // Only trail if improving
             {
-               g_news_active = true;
-               g_news_impact = g_upcoming_news[i].impact;
-               g_last_news_time = g_upcoming_news[i].time;
-               Print("Sau tin tức cho ", Symbol(), ": ", g_upcoming_news[i].title);
-               return true;
+               trade.PositionModify(ticket, new_sl, take_profit);
+               Print("EMA Trail: Ticket ", ticket, ", New SL: ", 
+                     DoubleToString(new_sl, _Digits));
+            }
+         }
+         else if(position_type == POSITION_TYPE_SELL && current_price < g_ema89 && profit_pips > 0)
+         {
+            // Use EMA89 as trailing stop for sell positions
+            new_sl = g_ema89 + 5 * g_point; // 5 pip buffer above EMA
+            
+            if(stop_loss > new_sl + g_point || stop_loss == 0) // Only trail if improving
+            {
+               trade.PositionModify(ticket, new_sl, take_profit);
+               Print("EMA Trail: Ticket ", ticket, ", New SL: ", 
+                     DoubleToString(new_sl, _Digits));
             }
          }
       }
-   }
-   else
-   {
-      // Phương pháp đơn giản nếu không có lịch tin tức ngoài
-      // If we know about a news event
-      if(g_last_news_time > 0)
+      
+      // Manage Scout positions with multiple take profits
+      if(UseMultipleTPs && IsScoutPosition((int)ticket))
       {
-         // If we're in the pre-news quiet period
-         if(current_time < g_last_news_time && 
-            current_time > g_last_news_time - MinutesBeforeNews * 60)
-         {
-            g_news_active = true;
-            return true;
-         }
-         
-         // If we're in the post-news volatility period
-         if(current_time > g_last_news_time && 
-            current_time < g_last_news_time + PostNewsWaitTime * 60)
-         {
-            g_news_active = true;
-            return true;
-         }
-         
-         // News period has passed
-         if(current_time > g_last_news_time + PostNewsWaitTime * 60)
-         {
-            g_news_active = false;
-            g_news_impact = 0;
-            g_last_news_time = 0;
-         }
+         int type = position_type == POSITION_TYPE_BUY ? OP_BUY : OP_SELL;
+         CheckPartialClose((int)ticket, type, open_price, profit_pips);
       }
    }
-   
-   return g_news_active;
 }
 
 //+------------------------------------------------------------------+
-//| Check if drawdown limits are acceptable for PropFirm mode         |
-//+------------------------------------------------------------------+
-bool IsDrawdownAcceptable()
-{
-   if(!PropFirmMode) return true;
-   
-   // Calculate current drawdown percentages
-   double daily_drawdown = 0;
-   if(g_session_start_balance > 0)
-      daily_drawdown = (g_session_start_balance - AccountInfoDouble(ACCOUNT_BALANCE)) / g_session_start_balance * 100;
-   
-   double weekly_drawdown = 0;
-   if(g_week_start_balance > 0)
-      weekly_drawdown = (g_week_start_balance - AccountInfoDouble(ACCOUNT_BALANCE)) / g_week_start_balance * 100;
-   
-   // Check if drawdowns are within limits
-   if(daily_drawdown > MaxDailyDrawdown)
-   {
-      Print("Cảnh báo: Đạt giới hạn drawdown hàng ngày (", DoubleToString(daily_drawdown, 2), "%)");
-      return false;
-   }
-      
-   if(weekly_drawdown > MaxWeeklyDrawdown)
-   {
-      Print("Cảnh báo: Đạt giới hạn drawdown hàng tuần (", DoubleToString(weekly_drawdown, 2), "%)");
-      return false;
-   }
-      
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Phần 5: Phát hiện bất thường thị trường                          |
+//| Enhanced Market Anomaly Detection System                          |
 //+------------------------------------------------------------------+
 bool DetectMarketAnomaly()
 {
-   // Chỉ kiểm tra mỗi 5 giây để tránh tốn tài nguyên
+   // Only check every N seconds to save resources
    static datetime last_check = 0;
-   if(TimeCurrent() - last_check < 5) return g_market_anomaly_detected;
-   last_check = TimeCurrent();
+   datetime current_time = TimeCurrent();
    
-   // Kiểm tra spread bất thường
+   // Throttle checks to once every 5 seconds
+   if(current_time - last_check < 5 && g_market_anomaly_detected == false) 
+      return g_market_anomaly_detected;
+   
+   last_check = current_time;
+   
+   // If already in anomaly state, check if it has expired
+   if(g_market_anomaly_detected && current_time - g_last_anomaly_time > 1800) // 30 minutes
+   {
+      Print("Market conditions returned to normal after anomaly");
+      g_market_anomaly_detected = false;
+      return false;
+   }
+   
+   // Check for abnormal spread conditions
    double current_spread = (double)SymbolInfoInteger(Symbol(), SYMBOL_SPREAD) * Point();
    if(current_spread > g_normal_spread * MaxSpreadMultiplier)
    {
-      Print("Phát hiện spread bất thường: ", DoubleToString(current_spread / Point(), 1), 
-            " (bình thường: ", DoubleToString(g_normal_spread / Point(), 1), ")");
+      Print("Abnormal spread detected: ", DoubleToString(current_spread / Point(), 1), 
+            " pips (normal: ", DoubleToString(g_normal_spread / Point(), 1), " pips)");
       g_market_anomaly_detected = true;
-      g_last_anomaly_time = TimeCurrent();
+      g_last_anomaly_time = current_time;
       return true;
    }
    
-   // Kiểm tra biến động giá bất thường trong 5 phút
-   int highest_idx = iHighest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_HIGH, 1, 0);
-   int lowest_idx = iLowest_MQL4(Symbol(), PERIOD_M5, MQL4_PRICE_LOW, 1, 0);
-   double high_5min = iHigh(Symbol(), PERIOD_M5, highest_idx);
-   double low_5min = iLow(Symbol(), PERIOD_M5, lowest_idx);
-   double range_5min = (high_5min - low_5min) / g_point;
+   // Optimize volatility check by using cached price data when possible
+   static double last_high = 0, last_low = 0;
+   static datetime last_high_low_update = 0;
    
+   // Only update high/low every minute to save resources
+   if(current_time - last_high_low_update > 60 || last_high == 0 || last_low == 0)
+   {
+      int highest_idx = iHighest_MQL4(Symbol(), PERIOD_M5, ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_HIGH, 1, 0);
+      int lowest_idx = iLowest_MQL4(Symbol(), PERIOD_M5, ENUM_MQL4_APPLIED_PRICE::MQL4_PRICE_LOW, 1, 0);
+      
+      last_high = iHigh(Symbol(), PERIOD_M5, highest_idx);
+      last_low = iLow(Symbol(), PERIOD_M5, lowest_idx);
+      last_high_low_update = current_time;
+   }
+   
+   // Calculate range in pips
+   double range_5min = (last_high - last_low) / g_point;
+   
+   // Check for abnormal volatility
    if(range_5min > AbnormalVolatilityPips)
    {
-      Print("Phát hiện biến động bất thường: ", DoubleToString(range_5min, 1), 
-            " pips trong 5 phút");
+      Print("Abnormal volatility detected: ", DoubleToString(range_5min, 1), 
+            " pips in last 5 minutes");
       g_market_anomaly_detected = true;
-      g_last_anomaly_time = TimeCurrent();
+      g_last_anomaly_time = current_time;
       return true;
    }
    
-   // Kiểm tra nếu bất thường đã hết
-   if(g_market_anomaly_detected && TimeCurrent() - g_last_anomaly_time > 1800) // 30 phút
+   // Additional check: unusual tick volume
+   double last_volume = iVolume(Symbol(), PERIOD_M1, 0);
+   static double avg_volume = 0;
+   
+   // Initialize or update average volume
+   if(avg_volume == 0)
    {
-      Print("Thị trường đã ổn định sau bất thường");
-      g_market_anomaly_detected = false;
+      double volumes[10];
+      if(CopyTickVolume(Symbol(), PERIOD_M1, 1, 10, volumes) > 0)
+      {
+         double sum = 0;
+         for(int i = 0; i < 10; i++) sum += volumes[i];
+         avg_volume = sum / 10.0;
+      }
+   }
+   else
+   {
+      // Continuously update the average (10% new value, 90% old value)
+      avg_volume = 0.9 * avg_volume + 0.1 * last_volume;
+   }
+   
+   // Check for volume spike
+   if(avg_volume > 0 && last_volume > avg_volume * 5.0)
+   {
+      Print("Abnormal volume spike detected: ", DoubleToString(last_volume, 0), 
+            " (avg: ", DoubleToString(avg_volume, 0), ")");
+      g_market_anomaly_detected = true;
+      g_last_anomaly_time = current_time;
+      return true;
    }
    
    return g_market_anomaly_detected;
 }
 
 //+------------------------------------------------------------------+
-//| Phần 5: Xử lý phản ứng với bất thường thị trường                 |
-//+------------------------------------------------------------------+
-void ManageAnomalyResponse()
-{
-   // Không mở vị thế mới, chỉ quản lý các vị thế hiện có
-   
-   // Quản lý vị thế hiện có khi có bất thường
-   for(int i = 0; i < PositionsTotal(); i++)
-   {
-      // Use PositionGetTicket instead of PositionSelectByIndex
-      ulong ticket = PositionGetTicket(i);
-      if(ticket != 0 && PositionSelectByTicket(ticket))
-      {
-         if(PositionGetString(POSITION_SYMBOL) == Symbol())
-         {
-            // Đóng các vị thế đang lỗ > 2%
-            double loss_percent = 100 * PositionGetDouble(POSITION_PROFIT) / AccountInfoDouble(ACCOUNT_BALANCE);
-            if(loss_percent < -2.0)
-            {
-               Print("Đóng vị thế đang lỗ do bất thường thị trường: ", PositionGetInteger(POSITION_TICKET));
-               CTrade trade;
-               trade.PositionClose((ulong)PositionGetInteger(POSITION_TICKET));
-            }
-            else
-            {
-               // Bảo vệ các vị thế có lợi nhuận
-               if(PositionGetDouble(POSITION_PROFIT) > 0)
-               {
-                  double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
-                  double stop_loss = PositionGetDouble(POSITION_SL);
-                  ENUM_POSITION_TYPE position_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-                  
-                  // Di chuyển SL đến breakeven nếu chưa
-                  if((position_type == POSITION_TYPE_BUY && (stop_loss < open_price || stop_loss == 0)) ||
-                     (position_type == POSITION_TYPE_SELL && (stop_loss > open_price || stop_loss == 0)))
-                  {
-                     CTrade trade;
-                     trade.PositionModify((ulong)PositionGetInteger(POSITION_TICKET), 
-                                         open_price, 
-                                         PositionGetDouble(POSITION_TP));
-                     Print("Di chuyển SL đến breakeven do bất thường thị trường: ", 
-                           PositionGetInteger(POSITION_TICKET));
-                  }
-               }
-            }
-         }
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Phần 5: Tải lịch tin tức từ file bên ngoài                      |
-//+------------------------------------------------------------------+
-void LoadNewsCalendar()
-{
-   g_news_count = 0;
-   
-   if(!FileIsExist(NewsCalendarFile))
-   {
-      Print("Không tìm thấy file lịch tin tức: ", NewsCalendarFile);
-      return;
-   }
-   
-   int file_handle = FileOpen(NewsCalendarFile, FILE_READ|FILE_CSV, ",");
-   if(file_handle == INVALID_HANDLE)
-   {
-      Print("Không mở được file lịch tin tức: ", GetLastError());
-      return;
-   }
-   
-   // Đọc file CSV có định dạng: Thời gian,Tiền tệ,Tiêu đề,Tác động
-   while(!FileIsEnding(file_handle) && g_news_count < 10)
-   {
-      string time_str = FileReadString(file_handle);
-      string currency = FileReadString(file_handle);
-      string title = FileReadString(file_handle);
-      string impact = FileReadString(file_handle);
-      
-      g_upcoming_news[g_news_count].time = StringToTime(time_str);
-      g_upcoming_news[g_news_count].currency = currency;
-      g_upcoming_news[g_news_count].title = title;
-      
-      // Chuyển đổi tác động thành số
-      if(impact == "High")
-         g_upcoming_news[g_news_count].impact = 3;
-      else if(impact == "Medium")
-         g_upcoming_news[g_news_count].impact = 2;
-      else
-         g_upcoming_news[g_news_count].impact = 1;
-      
-      // Chỉ lưu các tin tức trong tương lai
-      if(g_upcoming_news[g_news_count].time > TimeCurrent())
-      {
-         g_news_count++;
-         Print("Đã tải tin tức: ", time_str, " ", currency, " ", title, " (", impact, ")");
-      }
-   }
-   
-   FileClose(file_handle);
-   Print("Tổng cộng ", g_news_count, " tin tức được tải");
-}
-
-//+------------------------------------------------------------------+
-//| Phần 6: Kiểm tra xem một ticket có phải là vị thế Scout không     |
-//+------------------------------------------------------------------+
-bool IsScoutPosition(int ticket)
-{
-   // Early exit if no scout positions or invalid ticket
-   if(g_scout_positions_count == 0 || ticket <= 0)
-      return false;
-      
-   // Use binary search if array is large enough
-   if(g_scout_positions_count > 5)
-   {
-      // Assume the array is usually in ascending order
-      // Simple binary search implementation
-      int left = 0;
-      int right = g_scout_positions_count - 1;
-      
-      while(left <= right)
-      {
-         int mid = (left + right) / 2;
-         
-         if(g_scout_ticket_array[mid] == ticket)
-            return true;
-         
-         if(g_scout_ticket_array[mid] < ticket)
-            left = mid + 1;
-         else
-            right = mid - 1;
-      }
-      
-      return false;
-   }
-   
-   // Linear search for small arrays
-   for(int i = 0; i < g_scout_positions_count; i++)
-   {
-      if(g_scout_ticket_array[i] == ticket)
-         return true;
-   }
-   return false;
-}
-
-//+------------------------------------------------------------------+
-//| Phần 6: Kiểm tra và thực hiện đóng một phần vị thế              |
-//+------------------------------------------------------------------+
-void CheckPartialClose(int ticket, int type, double open_price, double profit_pips)
-{
-   ulong pos_ticket = (ulong)ticket;
-   
-   // Check if position exists and select it
-   if(!PositionSelectByTicket(pos_ticket))
-      return;
-      
-   double current_lots = PositionGetDouble(POSITION_VOLUME);
-   double tp1_level = StopLoss * TP1Ratio;
-   double tp2_level = StopLoss * TP2Ratio;
-   double tp3_level = StopLoss * TP3Ratio;
-   
-   // Initialize CTrade object for position operations
-   CTrade trade;
-   
-   // TP1: Chốt phần đầu tiên
-   if(!g_tp1_hit && profit_pips >= tp1_level && TP1Percent > 0)
-   {
-      double close_lots = MathFloor(current_lots * TP1Percent / 100 / SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_STEP)) 
-                         * SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_STEP);
-                         
-      if(close_lots >= SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MIN))
-      {
-         bool result = trade.PositionClosePartial(pos_ticket, close_lots);
-         if(result)
-         {
-            g_tp1_hit = true;
-            Print("TP1 đạt: Đóng ", DoubleToString(close_lots, 2), " của vị thế ", ticket);
-            
-            // Điều chỉnh SL đến breakeven cho phần còn lại
-            if(PositionSelectByTicket(pos_ticket))
-            {
-               trade.PositionModify(pos_ticket, open_price, PositionGetDouble(POSITION_TP));
-            }
-         }
-      }
-   }
-   
-   // TP2: Chốt phần thứ hai
-   if(g_tp1_hit && !g_tp2_hit && profit_pips >= tp2_level && TP2Percent > 0)
-   {
-      // Cần select lại vì có thể đóng một phần
-      if(PositionSelectByTicket(pos_ticket))
-      {
-         current_lots = PositionGetDouble(POSITION_VOLUME);
-         
-         double close_lots = MathFloor(current_lots * TP2Percent / (100 - TP1Percent) * 100 
-                            / SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_STEP)) 
-                            * SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_STEP);
-                            
-         if(close_lots >= SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MIN))
-         {
-            bool result = trade.PositionClosePartial(pos_ticket, close_lots);
-            if(result)
-            {
-               g_tp2_hit = true;
-               Print("TP2 đạt: Đóng ", DoubleToString(close_lots, 2), " của vị thế ", ticket);
-               
-               // Bật trailing stop chặt hơn
-               if(PositionSelectByTicket(pos_ticket))
-               {
-                  // Sử dụng trailing stop theo EMA89 hoặc trailing thông thường
-                  if(UseEMA89TrailingStop)
-                     g_ema89 = iMA_MQL4(Symbol(), PERIOD_CURRENT, 89, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-               }
-            }
-         }
-      }
-   }
-   
-   // TP3: Phần còn lại được quản lý bởi trailing stop
-}
-
-//+------------------------------------------------------------------+
-//| Phần 6: Thực hiện Scout Position Building                        |
-//+------------------------------------------------------------------+
-void ExecuteScoutPositionBuilding()
-{
-   // Xác định ý định MM trước
-   int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-   
-   // Get current prices
-   double current_close = iClose(Symbol(), PERIOD_CURRENT, 0);
-   double prev_close_10 = iClose(Symbol(), PERIOD_CURRENT, 10);
-   
-   // Nếu chưa có vị thế và cần tìm vị thế đầu tiên
-   if(g_scout_positions_count == 0)
-   {
-      g_mm_bullish = (pvsra_signal > 0);
-      
-      if(pvsra_signal != 0) // Có tín hiệu rõ ràng
-      {
-         int trade_type = (g_mm_bullish) ? OP_BUY : OP_SELL;
-         
-         // Kiểm tra nếu giá ở gần mức SR
-         if(IsNearSRLevel(current_close))
-         {
-            // Mở vị thế Scout đầu tiên
-            OpenScoutPosition(trade_type, 0);
-         }
-      }
-   }
-   // Nếu đã có vị thế và cần xây dựng thêm
-   else if(g_scout_positions_count < MaxScoutPositions)
-   {
-      // Kiểm tra nếu cần thêm vị thế
-      bool add_position = false;
-      
-      if(g_mm_bullish) // Nếu MM là bulls
-      {
-         // Thêm vị thế khi giá giảm đến mức SR
-         if(current_close < prev_close_10 && IsNearSRLevel(current_close))
-            add_position = true;
-      }
-      else // Nếu MM là bears
-      {
-         // Thêm vị thế khi giá tăng đến mức SR
-         if(current_close > prev_close_10 && IsNearSRLevel(current_close))
-            add_position = true;
-      }
-      
-      if(add_position)
-      {
-         int trade_type = (g_mm_bullish) ? OP_BUY : OP_SELL;
-         OpenScoutPosition(trade_type, g_scout_positions_count);
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Phần 6: Mở vị thế Scout để xây dựng position                     |
-//+------------------------------------------------------------------+
-void OpenScoutPosition(int type, int position_index)
-{
-   double lot_size = CalculateLotSize(type);
-   
-   // Trường hợp 2-5 sẽ được tăng dần kích thước
-   if(position_index > 0)
-   {
-      lot_size = lot_size * (1.0 + position_index * 0.2); // Tăng 20% mỗi vị thế
-   }
-   
-   double sl = 0, tp = 0;
-   double current_price = (type == OP_BUY) ? 
-      SymbolInfoDouble(Symbol(), SYMBOL_ASK) : 
-      SymbolInfoDouble(Symbol(), SYMBOL_BID);
-   
-   // Tính SL và TP
-   if(type == OP_BUY)
-   {
-      sl = current_price - StopLoss * g_point;
-      
-      // Nếu sử dụng nhiều TP
-      if(UseMultipleTPs)
-      {
-         // Không đặt TP cố định, sẽ chốt thủ công theo phần trăm
-         tp = 0;
-         
-         // Tính các mức TP để tham chiếu sau này
-         g_scout_tp_levels[0] = current_price + StopLoss * TP1Ratio * g_point;
-         g_scout_tp_levels[1] = current_price + StopLoss * TP2Ratio * g_point;
-         g_scout_tp_levels[2] = current_price + StopLoss * TP3Ratio * g_point;
-      }
-      else
-      {
-         tp = current_price + TakeProfit * g_point;
-      }
-   }
-   else // OP_SELL
-   {
-      sl = current_price + StopLoss * g_point;
-      
-      // Nếu sử dụng nhiều TP
-      if(UseMultipleTPs)
-      {
-         // Không đặt TP cố định, sẽ chốt thủ công theo phần trăm
-         tp = 0;
-         
-         // Tính các mức TP để tham chiếu sau này
-         g_scout_tp_levels[0] = current_price - StopLoss * TP1Ratio * g_point;
-         g_scout_tp_levels[1] = current_price - StopLoss * TP2Ratio * g_point;
-         g_scout_tp_levels[2] = current_price - StopLoss * TP3Ratio * g_point;
-      }
-      else
-      {
-         tp = current_price - TakeProfit * g_point;
-      }
-   }
-   
-   // Create trade object and execute
-   CTrade trade;
-   trade.SetExpertMagicNumber(123456);
-   ENUM_ORDER_TYPE order_type = (type == OP_BUY) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
-   
-   if(!trade.PositionOpen(Symbol(), order_type, lot_size, current_price, sl, tp, 
-                         "Sonic R Scout #" + IntegerToString(position_index+1)))
-   {
-      Print("Position open error: ", trade.ResultRetcode(), " - ", trade.ResultRetcodeDescription());
-      return;
-   }
-   
-   // Thêm vào danh sách vị thế Scout
-   ulong ticket = trade.ResultOrder();
-   if(ticket > 0)
-   {
-      g_scout_ticket_array[g_scout_positions_count] = (int)ticket;
-      g_scout_positions_count++;
-      
-      Print("Đã mở vị thế Scout #", position_index+1, ": ", 
-            (type == OP_BUY) ? "BUY" : "SELL", " ", 
-            DoubleToString(lot_size, 2), " @ ", DoubleToString(current_price, 5));
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Phần 6: Điều chỉnh TP dựa trên PVSRA                            |
-//+------------------------------------------------------------------+
-void AdjustTakeProfitOnPVSRA()
-{
-   if(!UseMultipleTPs) return;
-   
-   // Đóng tất cả các vị thế Scout khi MM chuyển hướng
-   for(int i = 0; i < PositionsTotal(); i++)
-   {
-      // Use PositionGetTicket instead of PositionSelectByIndex
-      ulong ticket = PositionGetTicket(i);
-      if(ticket != 0 && PositionSelectByTicket(ticket))
-      {
-         if(PositionGetString(POSITION_SYMBOL) == Symbol() && IsScoutPosition((int)PositionGetInteger(POSITION_TICKET)))
-         {
-            // Vị thế Scout - MM đã chuyển hướng
-            Print("MM chuyển hướng - Đóng vị thế Scout: ", PositionGetInteger(POSITION_TICKET));
-            CTrade trade;
-            trade.PositionClose((ulong)PositionGetInteger(POSITION_TICKET));
-         }
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Phần 7: Phân tích đa khung thời gian                            |
-//+------------------------------------------------------------------+
-bool NeedUpdateMTFAnalysis()
-{
-   // Cập nhật mỗi 15 phút
-   if(TimeCurrent() - g_last_mtf_analysis > 15 * 60)
-      return true;
-      
-   return false;
-}
-
-//+------------------------------------------------------------------+
-//| Phần 7: Thực hiện phân tích đa khung thời gian                  |
-//+------------------------------------------------------------------+
-void PerformMultiTimeframeAnalysis()
-{
-   g_last_mtf_analysis = TimeCurrent();
-   
-   // Phân tích D1
-   g_mtf_bullish_d1 = iMA_MQL4(Symbol(), PERIOD_D1, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
-                      iMA_MQL4(Symbol(), PERIOD_D1, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-                     
-   // Phân tích H4
-   g_mtf_bullish_h4 = iMA_MQL4(Symbol(), PERIOD_H4, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
-                      iMA_MQL4(Symbol(), PERIOD_H4, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-                     
-   // Phân tích H1
-   g_mtf_bullish_h1 = iMA_MQL4(Symbol(), PERIOD_H1, DragonPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0) > 
-                      iMA_MQL4(Symbol(), PERIOD_H1, TrendPeriod, 0, MODE_EMA, MQL4_PRICE_CLOSE, 0);
-   
-   // Phân tích PVSRA để xác định ý định MM
-   int pvsra_signal = AnalyzePVSRA(PERIOD_M15);
-   g_mm_bullish = (pvsra_signal > 0);
-   
-   // Ghi log phân tích
-   if(SaveTradingLog)
-   {
-      string analysis_log = "MTF Analysis: D1=" + (g_mtf_bullish_d1 ? "Bull" : "Bear") + 
-                           ", H4=" + (g_mtf_bullish_h4 ? "Bull" : "Bear") + 
-                           ", H1=" + (g_mtf_bullish_h1 ? "Bull" : "Bear") + 
-                           ", MM=" + (g_mm_bullish ? "Bull" : "Bear");
-      Print(analysis_log);
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Phần 7: Kiểm tra nếu trong giờ giao dịch                        |
+//| Improved Trading Hours Check with Cached Calculations             |
 //+------------------------------------------------------------------+
 bool IsWithinTradingHours()
 {
    if(!LimitTradingHours) return true;
    
+   // Cache result to minimize DateTime operations
+   static bool last_result = false;
+   static datetime last_check_time = 0;
+   static int check_interval = 300; // Check every 5 minutes
+   
+   datetime current_time = TimeCurrent();
+   
+   // Return cached result if still valid
+   if(current_time - last_check_time < check_interval)
+      return last_result;
+   
+   // Update cache time
+   last_check_time = current_time;
+   
+   // Get current hour with timezone consideration
    MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
+   TimeToStruct(current_time, dt);
    int current_hour = dt.hour;
    
-   return (current_hour >= TradingStartHour && current_hour < TradingEndHour);
-}
-
-//+------------------------------------------------------------------+
-//| Phần 7: Phân tích thị trường hàng ngày                           |
-//+------------------------------------------------------------------+
-void PerformDailyAnalysis()
-{
-   // Thiết lập lại biến theo dõi
-   g_total_trades_today = 0;
-   g_total_profit_today = 0;
-   g_tp1_hit = false;
-   g_tp2_hit = false;
+   // Allow trading only during specified hours
+   last_result = (current_hour >= TradingStartHour && current_hour < TradingEndHour);
    
-   // Phân tích đa khung thời gian
-   PerformMultiTimeframeAnalysis();
-   
-   // Ghi log phân tích
-   string log_message = "Phân tích ngày mới " + TimeToString(TimeCurrent(), TIME_DATE) + 
-                        ": Xu hướng D1=" + (g_mtf_bullish_d1 ? "Bull" : "Bear") + 
-                        ", H4=" + (g_mtf_bullish_h4 ? "Bull" : "Bear") + 
-                        ", H1=" + (g_mtf_bullish_h1 ? "Bull" : "Bear");
-   Print(log_message);
-}
-
-//+------------------------------------------------------------------+
-//| Phần 7: Khởi tạo nhật ký giao dịch                               |
-//+------------------------------------------------------------------+
-void InitTradingLog()
-{
-   if(!SaveTradingLog) return;
-   
-   int file_handle = FileOpen(LogFileName, FILE_WRITE|FILE_CSV, ",");
-   if(file_handle != INVALID_HANDLE)
+   // Additional filters for specific days if needed
+   if(last_result && dt.day_of_week == 5) // Friday
    {
-      FileWrite(file_handle, "DateTime", "Action", "Type", "Price", "Lots", 
-                "SL", "TP", "Comment", "Profit", "Balance");
-      FileClose(file_handle);
-      Print("Đã khởi tạo file nhật ký giao dịch: ", LogFileName);
-   }
-   else
-   {
-      Print("Không thể tạo file nhật ký giao dịch: ", GetLastError());
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Phần 7: Cập nhật nhật ký giao dịch                               |
-//+------------------------------------------------------------------+
-void UpdateTradingLog()
-{
-   if(!SaveTradingLog) return;
-   
-   // Tính tổng lợi nhuận trong ngày
-   double daily_profit = 0;
-   
-   // Duyệt qua lịch sử giao dịch để tìm các giao dịch trong ngày
-   HistorySelect(g_day_start_time, TimeCurrent());
-   int total_deals = HistoryDealsTotal();
-   
-   for(int i = 0; i < total_deals; i++)
-   {
-      ulong deal_ticket = HistoryDealGetTicket(i);
-      if(HistoryDealGetString(deal_ticket, DEAL_SYMBOL) == Symbol())
-      {
-         // Only count closed positions profit/loss
-         if(HistoryDealGetInteger(deal_ticket, DEAL_ENTRY) == DEAL_ENTRY_OUT)
-         {
-            daily_profit += HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
-            daily_profit += HistoryDealGetDouble(deal_ticket, DEAL_SWAP);
-            daily_profit += HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
-         }
-      }
+      // Maybe limit trading hours on Friday
+      if(current_hour >= 16) // After 4 PM on Friday
+         last_result = false;
    }
    
-   // Ghi nhật ký
-   int file_handle = FileOpen(LogFileName, FILE_READ|FILE_WRITE|FILE_CSV, ",");
-   if(file_handle != INVALID_HANDLE)
-   {
-      FileSeek(file_handle, 0, SEEK_END);
+   // Check for known high-volume sessions
+   bool major_session = false;
+   
+   // London session (8-16 GMT)
+   if(current_hour >= LondonOpenHour && current_hour < LondonOpenHour + SessionOverlapHours)
+      major_session = true;
       
-      // Ghi thông tin tổng hợp hàng giờ
-      FileWrite(file_handle, TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES), 
-               "HourlyUpdate", "", "", "", "", "", 
-               "MTF=" + (g_mtf_bullish_h1 ? "Bull" : "Bear") + ",MM=" + (g_mm_bullish ? "Bull" : "Bear"), 
-               DoubleToString(daily_profit, 2), 
-               DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2));
-               
-      FileClose(file_handle);
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Phần 7: Kiểm tra nếu là bar mới                                 |
-//+------------------------------------------------------------------+
-bool IsNewBar(ENUM_TIMEFRAMES timeframe)
-{
-   static datetime last_bar_time = 0;
-   datetime current_bar_time = iTime(Symbol(), timeframe, 0);
+   // New York session (13-21 GMT)
+   if(current_hour >= NewYorkOpenHour && current_hour < NewYorkOpenHour + SessionOverlapHours)
+      major_session = true;
+      
+   // High-priority override: Always allow during major session overlaps
+   if(OnlyTradeMainSessions && !major_session)
+      last_result = false;
    
-   if(current_bar_time != last_bar_time)
-   {
-      last_bar_time = current_bar_time;
-      return true;
+   return last_result;
+}
+
+//+------------------------------------------------------------------+
+//| Optimized Indicator Update System with Caching                    |
+//+------------------------------------------------------------------+
+void UpdateIndicators()
+{
+   static datetime last_update_time = 0;
+   static int update_frequency = 2; // Update every 2 seconds
+   
+   datetime current_time = TimeCurrent();
+   
+   // Only update when necessary to improve performance
+   if(current_time - last_update_time < update_frequency)
+      return;
+   
+   // Calculate price-based EMAs
+   
+   // Cache indicator handles to avoid repeatedly creating them
+   static int dragon_mid_handle = -1;
+   static int dragon_high_handle = -1;
+   static int dragon_low_handle = -1;
+   static int trend_handle = -1;
+   static int ma_handle = -1;
+   
+   // Initialize handles if needed
+   if(dragon_mid_handle == -1)
+      dragon_mid_handle = iMA(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, SYS_PRICE_CLOSE);
+   
+   if(dragon_high_handle == -1)
+      dragon_high_handle = iMA(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, SYS_PRICE_HIGH);
+   
+   if(dragon_low_handle == -1)
+      dragon_low_handle = iMA(Symbol(), PERIOD_CURRENT, DragonPeriod, 0, MODE_EMA, SYS_PRICE_LOW);
+   
+   if(trend_handle == -1)
+      trend_handle = iMA(Symbol(), PERIOD_CURRENT, TrendPeriod, 0, MODE_EMA, SYS_PRICE_CLOSE);
+   
+   if(ma_handle == -1)
+      ma_handle = iMA(Symbol(), PERIOD_CURRENT, MAPeriod, 0, MODE_SMA, SYS_PRICE_CLOSE);
+   
+   // Get data from indicators
+   double buffer[1];
+   
+   if(CopyBuffer(dragon_mid_handle, 0, 0, 1, buffer) > 0)
+      g_dragon_mid = buffer[0];
+   
+   if(CopyBuffer(dragon_high_handle, 0, 0, 1, buffer) > 0)
+      g_dragon_high = buffer[0];
+   
+   if(CopyBuffer(dragon_low_handle, 0, 0, 1, buffer) > 0)
+      g_dragon_low = buffer[0];
+   
+   if(CopyBuffer(trend_handle, 0, 0, 1, buffer) > 0) {
+      g_trend = buffer[0];
+      g_ema89 = g_trend; // Use the same value for EMA89
    }
    
-   return false;
+   if(CopyBuffer(ma_handle, 0, 0, 1, buffer) > 0)
+      g_ma = buffer[0];
+   
+   // Update timestamp
+   last_update_time = current_time;
+   
+   // Count positions (should be done on every tick)
+   CountOpenPositions();
 }
 
 //+------------------------------------------------------------------+
-//| Manage open positions (trailing, breakeven, etc)                  |
-//+------------------------------------------------------------------+
-void ManageOpenPositions()
-{
-   for(int i = 0; i < PositionsTotal(); i++)
-   {
-      // Use PositionGetTicket instead of PositionSelectByIndex
-      ulong ticket = PositionGetTicket(i);
-      if(ticket != 0 && PositionSelectByTicket(ticket))
-      {
-         if(PositionGetString(POSITION_SYMBOL) == Symbol())
-         {
-            ulong position_ticket = PositionGetInteger(POSITION_TICKET);
-            double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
-            double current_price = PositionGetDouble(POSITION_PRICE_CURRENT);
-            double stop_loss = PositionGetDouble(POSITION_SL);
-            double take_profit = PositionGetDouble(POSITION_TP);
-            double profit_pips = 0;
-            
-            ENUM_POSITION_TYPE position_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-            
-            // Calculate profit in pips
-            if(position_type == POSITION_TYPE_BUY)
-               profit_pips = (current_price - open_price) / g_point;
-            else if(position_type == POSITION_TYPE_SELL)
-               profit_pips = (open_price - current_price) / g_point;
-            
-            // Break Even
-            if(BreakEvenEnabled && profit_pips >= BreakEvenProfit)
-            {
-               double new_sl = 0;
-               
-               if(position_type == POSITION_TYPE_BUY)
-               {
-                  new_sl = open_price + BreakEvenPips * g_point;
-                  if(stop_loss < new_sl || stop_loss == 0)
-                  {
-                     // Only modify if we're moving SL up
-                     CTrade trade;
-                     trade.PositionModify(position_ticket, new_sl, take_profit);
-                     Print("Move to breakeven: ", position_ticket, " New SL: ", DoubleToString(new_sl, _Digits));
-                  }
-               }
-               else if(position_type == POSITION_TYPE_SELL)
-               {
-                  new_sl = open_price - BreakEvenPips * g_point;
-                  if(stop_loss > new_sl || stop_loss == 0)
-                  {
-                     // Only modify if we're moving SL down
-                     CTrade trade;
-                     trade.PositionModify(position_ticket, new_sl, take_profit);
-                     Print("Move to breakeven: ", position_ticket, " New SL: ", DoubleToString(new_sl, _Digits));
-                  }
-               }
-            }
-            
-            // Trailing Stop
-            if(UseTrailingStop && profit_pips >= TrailingStart)
-            {
-               double new_sl = 0;
-               
-               if(position_type == POSITION_TYPE_BUY)
-               {
-                  new_sl = current_price - TrailingStep * g_point;
-                  if(stop_loss < new_sl - g_point) // Only trail if meaningful movement
-                  {
-                     CTrade trade;
-                     trade.PositionModify(position_ticket, new_sl, take_profit);
-                     Print("Trailing stop: ", position_ticket, " New SL: ", DoubleToString(new_sl, _Digits));
-                  }
-               }
-               else if(position_type == POSITION_TYPE_SELL)
-               {
-                  new_sl = current_price + TrailingStep * g_point;
-                  if(stop_loss > new_sl + g_point || stop_loss == 0) // Only trail if meaningful movement
-                  {
-                     CTrade trade;
-                     trade.PositionModify(position_ticket, new_sl, take_profit);
-                     Print("Trailing stop: ", position_ticket, " New SL: ", DoubleToString(new_sl, _Digits));
-                  }
-               }
-            }
-            
-            // Manage Scout positions with multiple TPs
-            if(UseMultipleTPs && IsScoutPosition((int)position_ticket))
-            {
-               int position_type_mql4 = (position_type == POSITION_TYPE_BUY) ? OP_BUY : OP_SELL;
-               CheckPartialClose((int)position_ticket, position_type_mql4, open_price, profit_pips);
-            }
-         }
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Calculate position lot size based on risk                         |
+//| Enhanced Lot Size Calculator with Smart Risk Management           |
 //+------------------------------------------------------------------+
 double CalculateLotSize(int type)
 {
+   // Use fixed lot size if auto calculation is disabled
    if(!AutoLotSize)
       return FixedLotSize;
    
+   // Calculate risk-based lot size
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double risk_amount = balance * RiskPercent / 100;
+   double risk_amount = balance * RiskPercent / 100.0;
+   
+   // Get symbol properties (use cache if available)
+   static double tick_value = 0;
+   static double tick_size = 0;
+   static double min_lot = 0;
+   static double max_lot = 0;
+   static double lot_step = 0;
+   static string last_symbol = "";
+   
+   // Only update if symbol changes (rare) or first run
+   string current_symbol = Symbol();
+   if(current_symbol != last_symbol || tick_value == 0)
+   {
+      tick_value = SymbolInfoDouble(current_symbol, SYMBOL_TRADE_TICK_VALUE);
+      tick_size = SymbolInfoDouble(current_symbol, SYMBOL_TRADE_TICK_SIZE);
+      min_lot = SymbolInfoDouble(current_symbol, SYMBOL_VOLUME_MIN);
+      max_lot = SymbolInfoDouble(current_symbol, SYMBOL_VOLUME_MAX);
+      lot_step = SymbolInfoDouble(current_symbol, SYMBOL_VOLUME_STEP);
+      last_symbol = current_symbol;
+   }
    
    // Pip value in account currency
-   double pip_value = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE) * g_point / SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
+   double pip_value = tick_value * g_point / tick_size;
    
    // Calculate potential loss in pips
    double potential_loss_pips = StopLoss;
    
-   // Risk based position size
+   // Account for current market volatility
+   static double avg_atr = 0;
+   if(avg_atr == 0)
+   {
+      // Initialize ATR for volatility awareness
+      int atr_handle = iATR(current_symbol, PERIOD_CURRENT, 14);
+      if(atr_handle != INVALID_HANDLE)
+      {
+         double atr_buffer[1];
+         if(CopyBuffer(atr_handle, 0, 0, 1, atr_buffer) > 0)
+            avg_atr = atr_buffer[0] / g_point;
+      }
+   }
+   
+   // Adjust risk based on volatility if ATR is available
+   if(avg_atr > 0)
+   {
+      double volatility_ratio = StopLoss / avg_atr;
+      
+      // Reduce risk in high volatility conditions
+      if(volatility_ratio < 0.8) // Tight stop relative to volatility
+         risk_amount *= 0.8; // Reduce risk by 20%
+      else if(volatility_ratio > 1.5) // Wide stop relative to volatility
+         risk_amount *= 1.1; // Increase risk by 10%
+   }
+   
+   // Calculate risk-based position size
    double lots = risk_amount / (potential_loss_pips * pip_value);
    
-   // Ensure within symbol limits
-   double min_lot = SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MIN);
-   double max_lot = SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MAX);
-   double lot_step = SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_STEP);
-   
+   // Round to nearest lot step
    lots = MathFloor(lots / lot_step) * lot_step;
    
-   // Apply post-news size reduction if needed
+   // Apply position sizing modifiers based on market conditions
+   
+   // 1. Reduce size during news periods
    if(NewsFilter && g_news_active && ReduceSizePostNews)
    {
       lots = lots * PostNewsSizePercent / 100.0;
    }
    
-   // Cap at min/max
+   // 2. Adjust size based on win/loss streak (optional enhancement)
+   static int consecutive_wins = 0;
+   static int consecutive_losses = 0;
+   
+   // Increase size slightly on win streaks, decrease on loss streaks
+   if(consecutive_wins > 2)
+      lots *= 1.1; // 10% increase after 3 consecutive wins
+   else if(consecutive_losses > 1)
+      lots *= 0.8; // 20% decrease after 2 consecutive losses
+   
+   // 3. Prop firm risk controls
+   if(PropFirmMode)
+   {
+      // Calculate exposure percentage
+      double current_exposure = 0;
+      
+      // Iterate through open positions to calculate exposure
+      for(int i = 0; i < PositionsTotal(); i++)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket != 0 && PositionSelectByTicket(ticket))
+         {
+            if(PositionGetString(POSITION_SYMBOL) == current_symbol)
+            {
+               double position_lots = PositionGetDouble(POSITION_VOLUME);
+               current_exposure += position_lots * potential_loss_pips * pip_value / balance * 100.0;
+            }
+         }
+      }
+      
+      // Limit new position size if near max exposure
+      if(current_exposure + (lots * potential_loss_pips * pip_value / balance * 100.0) > MaxOpenRisk)
+      {
+         double max_lots = (MaxOpenRisk - current_exposure) * balance / (100.0 * potential_loss_pips * pip_value);
+         max_lots = MathFloor(max_lots / lot_step) * lot_step;
+         
+         if(max_lots < lots)
+            lots = max_lots;
+      }
+   }
+   
+   // Apply limits
    if(lots < min_lot) lots = min_lot;
    if(lots > max_lot) lots = max_lot;
    
+   // Special adjustment for Scout positions
+   if(UseScoutPositionBuilding && g_scout_positions_count > 0)
+   {
+      // Reduce first position size to allow for scaling in
+      if(g_scout_positions_count == 0)
+         lots *= 0.7; // Start with 70% for first position
+   }
+   
    return lots;
-}
-
-//+------------------------------------------------------------------+
-//| Open a PropFirm optimized trade (reduced risk)                    |
-//+------------------------------------------------------------------+
-void OpenPropFirmTrade(int type)
-{
-   // Use more conservative lot size for prop firm trades
-   double lot_size = CalculateLotSize(type) * 0.5; // 50% normal size
-   
-   double sl = 0, tp = 0;
-   double current_price = 0;
-   
-   // Convert MQL4 types to MQL5 types
-   ENUM_ORDER_TYPE order_type;
-   if(type == 0) // MQL4 OP_BUY
-   {
-      order_type = ORDER_TYPE_BUY;
-      current_price = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
-   }
-   else // MQL4 OP_SELL
-   {
-      order_type = ORDER_TYPE_SELL;
-      current_price = SymbolInfoDouble(Symbol(), SYMBOL_BID);
-   }
-   
-   // Calculate Stop Loss and Take Profit
-   if(type == 0) // Buy
-   {
-      sl = current_price - StopLoss * g_point;
-      tp = current_price + TakeProfit * g_point;
-   }
-   else // Sell
-   {
-      sl = current_price + StopLoss * g_point;
-      tp = current_price - TakeProfit * g_point;
-   }
-   
-   // Create trade object and execute
-   CTrade trade;
-   trade.SetExpertMagicNumber(123456);
-   
-   if(!trade.PositionOpen(Symbol(), order_type, lot_size, current_price, sl, tp, "Sonic R Prop"))
-   {
-      Print("Prop firm position open error: ", trade.ResultRetcode(), " - ", trade.ResultRetcodeDescription());
-   }
 }
